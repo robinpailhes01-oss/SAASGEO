@@ -1,4 +1,5 @@
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
+import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 import type { Database } from "./types";
 
@@ -35,19 +36,14 @@ export function createClient() {
 // A utiliser dans les fonctions Inngest, scripts d'admin, et la couche
 // API ou on gere des operations qui doivent contourner les RLS.
 // JAMAIS exposer la SERVICE_ROLE_KEY au client.
+//
+// Utilise @supabase/supabase-js directement (et pas @supabase/ssr) car
+// l'inference de types de from() est meilleure avec le client de base.
 export function createAdminClient() {
-  return createServerClient<Database>(
+  return createSupabaseClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
     {
-      cookies: {
-        getAll() {
-          return [];
-        },
-        setAll() {
-          // no-op : pas de session pour le client admin
-        },
-      },
       auth: {
         persistSession: false,
         autoRefreshToken: false,

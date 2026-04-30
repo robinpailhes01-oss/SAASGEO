@@ -18,6 +18,11 @@ export interface TrackedCall {
   tokens_in: number;
   tokens_out: number;
   request_type: RequestType;
+  // Cout USD reel facture par le provider (OpenRouter renvoie
+  // usage.cost dans la reponse). Si fourni, on utilise cette valeur
+  // comme source de verite. Si null/undefined, on calcule depuis la
+  // table pricing locale.
+  actual_cost_usd?: number;
 }
 
 // Insert une ligne dans api_usage et retourne le cost calcule.
@@ -26,29 +31,21 @@ export async function trackApiCall(call: TrackedCall): Promise<{
   cost_usd: number;
   cost_eur: number;
 }> {
-  const pricing = getPricing(call.provider, call.model);
-  if (!pricing) {
-    // Modele inconnu : on log avec cost=0 mais on warn dans la console
-    console.warn(
-      `[cost-tracker] Modele inconnu ${call.provider}/${call.model} — cost=0`
-    );
-    const sb = createAdminClient();
-    const row: ApiUsageInsert = {
-      user_id: call.user_id,
-      audit_id: call.audit_id,
-      provider: call.provider,
-      model: call.model,
-      tokens_in: call.tokens_in,
-      tokens_out: call.tokens_out,
-      cost_usd: 0,
-      cost_eur: 0,
-      request_type: call.request_type,
-    };
-    await sb.from("api_usage").insert(row);
-    return { cost_usd: 0, cost_eur: 0 };
+  // Source de verite : cost reel du provider si dispo, sinon calcul local
+  let cost_usd: number;
+  if (typeof call.actual_cost_usd === "number" && call.actual_cost_usd > 0) {
+    cost_usd = call.actual_cost_usd;
+  } else {
+    const pricing = getPricing(call.provider, call.model);
+    if (!pricing) {
+      console.warn(
+        `[cost-tracker] Modele inconnu ${call.provider}/${call.model} et pas de actual_cost_usd — cost=0`
+      );
+      cost_usd = 0;
+    } else {
+      cost_usd = computeCostUsd(pricing, call.tokens_in, call.tokens_out);
+    }
   }
-
-  const cost_usd = computeCostUsd(pricing, call.tokens_in, call.tokens_out);
   const cost_eur = usdToEur(cost_usd);
 
   const sb = createAdminClient();

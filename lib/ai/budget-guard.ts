@@ -11,14 +11,15 @@
 import { createAdminClient } from "@/lib/supabase/server";
 import type { BudgetStatus } from "./types";
 
-// Estimation cout d'un audit complet (calibree depuis Phase 0) :
+// Estimation cout d'un audit complet (calibree phase 0 + 10% margin
+// OpenRouter intégrée depuis le pivot vers OpenRouter) :
 //   - 1 brand extraction Haiku : ~0.0005€
 //   - 1 queries gen Sonnet : ~0.01€
-//   - 30 visibility queries x 4 providers : ~0.85€
+//   - 30 visibility queries x 4 providers : ~0.95€ (margin OR ~10%)
 //   - ~30 mention analysis Haiku : ~0.005€
 //   - 1 synthesis Sonnet : ~0.05€
-// Total ~0.92€. On prend 1.20€ pour avoir une marge de securite.
-const ESTIMATED_AUDIT_COST_EUR = 1.2;
+// Total ~1.02€. On prend 1.30€ pour marge de securite + variance.
+const ESTIMATED_AUDIT_COST_EUR = 1.3;
 
 const DEFAULT_CAP_EUR = 90;
 const DEFAULT_WARNING_EUR = 70;

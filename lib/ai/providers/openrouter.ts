@@ -47,6 +47,16 @@ interface OpenRouterResponse {
   citations?: string[];
 }
 
+// Strip les fences markdown ```json ... ``` autour d'un JSON.
+// Aussi gere le cas ou il y a juste ``` ... ``` sans le "json".
+function stripMarkdownFences(text: string): string {
+  const trimmed = text.trim();
+  // Pattern : ```json ... ``` ou ``` ... ```
+  const fenceMatch = trimmed.match(/^```(?:json|javascript|js)?\s*\n?([\s\S]*?)\n?```\s*$/);
+  if (fenceMatch) return fenceMatch[1].trim();
+  return trimmed;
+}
+
 export class OpenRouterError extends Error {
   status: number;
   constructor(message: string, status: number) {
@@ -126,7 +136,13 @@ export async function callOpenRouter(
       throw new OpenRouterError("Reponse OpenRouter sans choices", 500);
     }
 
-    const text = data.choices[0].message.content ?? "";
+    let text = data.choices[0].message.content ?? "";
+    // Anthropic Sonnet/Haiku via OpenRouter wrappent parfois le JSON dans
+    // un fence markdown ```json ... ``` meme avec response_format json_object.
+    // On strip les fences pour faciliter le parsing aval.
+    if (opts.jsonMode) {
+      text = stripMarkdownFences(text);
+    }
     const tokens_in = data.usage?.prompt_tokens ?? 0;
     const tokens_out = data.usage?.completion_tokens ?? 0;
     // Cout reel facture par OpenRouter (USD). Si absent, on retourne 0

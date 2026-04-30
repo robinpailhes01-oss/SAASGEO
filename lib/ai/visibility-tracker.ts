@@ -1,0 +1,350 @@
+// =====================================================================
+// Visibility tracker : execute 30 queries x 4 providers = 120 appels
+// LLM en parallele (avec concurrence bornee a 8 pour eviter les rate
+// limits) puis analyse chaque reponse via brand-mention detection.
+//
+// Sortie : ai_responses + ai_response_analysis pour l'audit.
+//
+// Cout estime par audit :
+//   - 30 x openai/gpt-4o      : ~0.20€
+//   - 30 x anthropic/claude-sonnet-4-5 : ~0.30€
+//   - 30 x perplexity/sonar   : ~0.40€
+//   - 30 x google/gemini-2.5-flash : ~0.05€ (ou 0 via direct)
+//   = ~0.95€ visibility seul
+//   - 120 x analyses Haiku    : ~0.12€
+//   = ~1.07€ pour la partie visibility
+// =====================================================================
+
+import type { AIProvider } from "./types";
+import { generateText } from "./providers";
+import { VISIBILITY_MODELS, modelToProvider } from "./models";
+import { trackApiCall } from "./cost-tracker";
+import { detectMentionFull, type FullMentionResult } from "./detection/brand-mention";
+
+export interface VisibilityQuery {
+  id: string;                       // uuid de la query (queries.id Supabase)
+  text: string;
+  category: "branded" | "service" | "comparative";
+  position: number;
+}
+
+export interface VisibilityResponse {
+  query_id: string;
+  query_text: string;
+  query_category: string;
+  provider: AIProvider;
+  model: string;
+  response_text: string;
+  tokens_in: number;
+  tokens_out: number;
+  cost_usd: number;
+  cost_eur: number;
+  latency_ms: number;
+  sources: { url: string; title?: string }[];
+  error?: string;
+  // Analyse mention apres traitement
+  analysis: FullMentionResult | null;
+  // Cout cumule (visibility + analysis)
+  total_cost_eur: number;
+}
+
+interface RunOptions {
+  brand_name: string;
+  brand_aliases: string[];
+  geo_target?: string | null;
+  audit_id?: string | null;
+  // Concurrence max d'appels simultanes (par defaut 8)
+  concurrency?: number;
+  // Verbose : log chaque progression
+  verbose?: boolean;
+}
+
+// Limiteur de concurrence simple : execute des taches en parallele
+// avec un cap sur le nombre simultane.
+async function runConcurrent<T, R>(
+  items: T[],
+  fn: (item: T, idx: number) => Promise<R>,
+  concurrency: number
+): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let next = 0;
+  async function worker() {
+    while (true) {
+      const i = next++;
+      if (i >= items.length) return;
+      results[i] = await fn(items[i], i);
+    }
+  }
+  const workers = Array.from({ length: Math.min(concurrency, items.length) }, () =>
+    worker()
+  );
+  await Promise.all(workers);
+  return results;
+}
+
+// Construit le prompt envoye a l'IA pour simuler une question user.
+// On ne met PAS de system prompt orientant — on veut simuler ce qu'un
+// utilisateur lambda obtiendrait en chat libre.
+function buildVisibilityPrompt(query: string, geo_target?: string | null): {
+  system?: string;
+  prompt: string;
+} {
+  // Geo context : si la query ne mentionne pas deja la zone et qu'on
+  // a un geo_target, on l'ajoute en contexte naturel.
+  const geoSuffix =
+    geo_target && !query.toLowerCase().includes(geo_target.toLowerCase())
+      ? ` (depuis ${geo_target})`
+      : "";
+
+  return {
+    // Pas de system prompt → reponse "raw" comme un user lambda
+    prompt: `${query}${geoSuffix}`,
+  };
+}
+
+// Execute UNE query sur UN provider et retourne la reponse + analyse.
+async function trackOne(args: {
+  query: VisibilityQuery;
+  provider: AIProvider;
+  brand_name: string;
+  brand_aliases: string[];
+  geo_target?: string | null;
+  audit_id?: string | null;
+}): Promise<VisibilityResponse> {
+  const { query, provider } = args;
+  const model = VISIBILITY_MODELS[provider];
+  const promptArgs = buildVisibilityPrompt(query.text, args.geo_target);
+
+  const t0 = Date.now();
+  let response_text = "";
+  let tokens_in = 0;
+  let tokens_out = 0;
+  let cost_usd = 0;
+  let cost_eur = 0;
+  let latency_ms = 0;
+  let sources: { url: string; title?: string }[] = [];
+  let error: string | undefined;
+
+  try {
+    const r = await generateText(model, {
+      ...promptArgs,
+      temperature: 0.7,
+      maxTokens: 600,
+    });
+    response_text = r.text;
+    tokens_in = r.tokens_in;
+    tokens_out = r.tokens_out;
+    cost_usd = r.cost_usd;
+    cost_eur = r.cost_eur;
+    latency_ms = r.latency_ms;
+    sources = r.sources ?? [];
+
+    // Track le cost de la visibility query
+    await trackApiCall({
+      user_id: null,
+      audit_id: args.audit_id ?? null,
+      provider,
+      model,
+      tokens_in,
+      tokens_out,
+      request_type: "visibility_query",
+      actual_cost_usd: cost_usd,
+    });
+  } catch (e) {
+    error = e instanceof Error ? e.message : String(e);
+    latency_ms = Date.now() - t0;
+  }
+
+  // Analyse mention si on a une reponse
+  let analysis: FullMentionResult | null = null;
+  if (response_text && !error) {
+    try {
+      analysis = await detectMentionFull({
+        brand_name: args.brand_name,
+        brand_aliases: args.brand_aliases,
+        query: query.text,
+        ai_response: response_text,
+        audit_id: args.audit_id,
+      });
+    } catch (e) {
+      console.warn(
+        `[visibility] analysis failed pour ${provider}/${query.text.slice(0, 50)} : ${e instanceof Error ? e.message : String(e)}`
+      );
+    }
+  }
+
+  const total_cost_eur = cost_eur + (analysis?.llm_cost_eur ?? 0);
+
+  return {
+    query_id: query.id,
+    query_text: query.text,
+    query_category: query.category,
+    provider,
+    model,
+    response_text,
+    tokens_in,
+    tokens_out,
+    cost_usd,
+    cost_eur,
+    latency_ms,
+    sources,
+    error,
+    analysis,
+    total_cost_eur,
+  };
+}
+
+// Lance le tracking complet : queries x providers en parallele bornee.
+export async function trackVisibility(
+  queries: VisibilityQuery[],
+  opts: RunOptions
+): Promise<VisibilityResponse[]> {
+  const concurrency = opts.concurrency ?? 8;
+  const verbose = opts.verbose ?? true;
+
+  const providers: AIProvider[] = ["openai", "anthropic", "perplexity", "gemini"];
+  const allTasks: Array<{ query: VisibilityQuery; provider: AIProvider }> = [];
+  for (const q of queries) {
+    for (const p of providers) {
+      allTasks.push({ query: q, provider: p });
+    }
+  }
+
+  if (verbose) {
+    console.log(
+      `[visibility] ${queries.length} queries x ${providers.length} providers = ${allTasks.length} appels (concurrence ${concurrency})`
+    );
+  }
+
+  let done = 0;
+  const startTime = Date.now();
+  const responses = await runConcurrent(
+    allTasks,
+    async (task) => {
+      const r = await trackOne({
+        ...task,
+        brand_name: opts.brand_name,
+        brand_aliases: opts.brand_aliases,
+        geo_target: opts.geo_target,
+        audit_id: opts.audit_id,
+      });
+      done += 1;
+      if (verbose && done % 10 === 0) {
+        const elapsed = ((Date.now() - startTime) / 1000).toFixed(0);
+        console.log(`[visibility]   ${done}/${allTasks.length} (${elapsed}s)`);
+      }
+      return r;
+    },
+    concurrency
+  );
+
+  if (verbose) {
+    const totalCost = responses.reduce((a, r) => a + r.total_cost_eur, 0);
+    const errors = responses.filter((r) => r.error).length;
+    console.log(
+      `[visibility] termine en ${((Date.now() - startTime) / 1000).toFixed(1)}s — cost ${totalCost.toFixed(4)}€, ${errors} erreur(s)`
+    );
+  }
+
+  return responses;
+}
+
+// Calcule les scores de visibility a partir des responses analysees.
+export interface VisibilityScores {
+  // Score global /100 : moyenne ponderee des 4 providers (25 chacun)
+  global_score: number;
+  // Score par provider /100
+  per_provider: Record<AIProvider, number>;
+  // % de queries ou la marque est mentionnee textuellement
+  mention_rate: number;
+  // % de queries ou la marque est citee comme source
+  citation_rate: number;
+  // Top concurrents detectes (frequence)
+  top_competitors: Array<{ name: string; count: number }>;
+}
+
+export function computeVisibilityScores(
+  responses: VisibilityResponse[]
+): VisibilityScores {
+  const providers: AIProvider[] = ["openai", "anthropic", "perplexity", "gemini"];
+  const per_provider: Record<AIProvider, number> = {
+    openai: 0,
+    anthropic: 0,
+    perplexity: 0,
+    gemini: 0,
+  };
+
+  // Pour chaque provider : on calcule un sub-score
+  // Formule : pour chaque query, points = 0/25/50/75/100 selon :
+  //   - 100 : mentionne EN PREMIER + sentiment positif
+  //   -  75 : mentionne en top 3 + sentiment positif/neutre
+  //   -  50 : mentionne (n'importe ou) + sentiment positif/neutre
+  //   -  25 : mentionne mais sentiment negatif
+  //   -   0 : non mentionne
+  for (const provider of providers) {
+    const perProvider = responses.filter((r) => r.provider === provider);
+    if (perProvider.length === 0) continue;
+    let sum = 0;
+    for (const r of perProvider) {
+      const a = r.analysis;
+      if (!a || !a.brand_mentioned) {
+        sum += 0;
+      } else if (a.mention_position === 1 && a.sentiment === "positive") {
+        sum += 100;
+      } else if (
+        a.mention_position !== null &&
+        a.mention_position <= 3 &&
+        (a.sentiment === "positive" || a.sentiment === "neutral")
+      ) {
+        sum += 75;
+      } else if (
+        (a.sentiment === "positive" || a.sentiment === "neutral")
+      ) {
+        sum += 50;
+      } else if (a.sentiment === "negative") {
+        sum += 25;
+      } else {
+        sum += 50; // mentionne mais sentiment null → neutre par defaut
+      }
+    }
+    per_provider[provider] = Math.round(sum / perProvider.length);
+  }
+
+  // Score global = moyenne des 4 providers (chaque provider pese 25%)
+  const global_score = Math.round(
+    (per_provider.openai + per_provider.anthropic +
+     per_provider.perplexity + per_provider.gemini) / 4
+  );
+
+  // Mention rate = % de queries ou brand_mentioned=true
+  const totalAnalyzed = responses.filter((r) => r.analysis !== null).length;
+  const mentions = responses.filter((r) => r.analysis?.brand_mentioned).length;
+  const citations = responses.filter(
+    (r) => r.analysis?.brand_citation_present
+  ).length;
+  const mention_rate = totalAnalyzed > 0 ? (mentions / totalAnalyzed) * 100 : 0;
+  const citation_rate = totalAnalyzed > 0 ? (citations / totalAnalyzed) * 100 : 0;
+
+  // Top competitors
+  const compFreq = new Map<string, number>();
+  for (const r of responses) {
+    if (!r.analysis) continue;
+    for (const c of r.analysis.competitors_cited) {
+      const norm = c.trim();
+      if (!norm) continue;
+      compFreq.set(norm, (compFreq.get(norm) ?? 0) + 1);
+    }
+  }
+  const top_competitors = Array.from(compFreq.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 10)
+    .map(([name, count]) => ({ name, count }));
+
+  return {
+    global_score,
+    per_provider,
+    mention_rate,
+    citation_rate,
+    top_competitors,
+  };
+}

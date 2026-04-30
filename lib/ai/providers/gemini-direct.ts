@@ -115,11 +115,20 @@ export async function callGeminiDirect(
     const latency_ms = Date.now() - t0;
 
     const candidate = data.candidates?.[0];
-    const text =
+    let text =
       candidate?.content?.parts
         ?.map((p) => p.text ?? "")
         .filter(Boolean)
         .join("") ?? "";
+
+    // Strip eventuels fences markdown si jsonMode (Gemini les met parfois)
+    if (opts.jsonMode) {
+      const trimmed = text.trim();
+      const fenceMatch = trimmed.match(
+        /^```(?:json|javascript|js)?\s*\n?([\s\S]*?)\n?```\s*$/
+      );
+      if (fenceMatch) text = fenceMatch[1].trim();
+    }
 
     const tokens_in = data.usageMetadata?.promptTokenCount ?? 0;
     const tokens_out = data.usageMetadata?.candidatesTokenCount ?? 0;

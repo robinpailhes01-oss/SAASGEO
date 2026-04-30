@@ -1,0 +1,96 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* =====================================================================
+   ANKORA — Tokens de design
+   Palette validee phase 0 :
+     - Fond : off-white legerement lavande (#FAFAFE)
+     - Surface : blanc pur
+     - Primaire : indigo profond (#1E1B4B)
+     - Accent : degrade indigo -> violet -> rose poudre
+   Tokens shadcn en HSL (compatibles dark mode futur).
+   ===================================================================== */
+
+@layer base {
+  :root {
+    /* Fonds */
+    --background: 240 60% 99%;            /* #FAFAFE */
+    --foreground: 240 53% 12%;            /* #0F0E2E */
+
+    /* Surface (cards, popovers) */
+    --card: 0 0% 100%;
+    --card-foreground: 240 53% 12%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 53% 12%;
+
+    /* Primaire — indigo profond */
+    --primary: 245 56% 20%;               /* #1E1B4B */
+    --primary-foreground: 0 0% 100%;
+
+    /* Secondaire — lavande clair */
+    --secondary: 245 46% 96%;             /* #F0EFFB */
+    --secondary-foreground: 245 56% 20%;
+
+    /* Muted — texte secondaire */
+    --muted: 245 30% 95%;
+    --muted-foreground: 245 17% 35%;      /* #4A4773 */
+
+    /* Accent — utilise pour les hovers et highlights */
+    --accent: 245 46% 94%;
+    --accent-foreground: 245 56% 20%;
+
+    /* Destructive — erreurs */
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+
+    /* Borders et inputs */
+    --border: 244 36% 93%;                /* #E8E7F4 */
+    --input: 244 36% 93%;
+    --ring: 245 56% 20%;
+
+    /* Radius */
+    --radius: 1rem;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1, "ss01" 1;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Hierarchie typographique (validee phase 0) */
+  h1 {
+    @apply font-display font-bold tracking-tight;
+    letter-spacing: -0.03em;
+  }
+  h2, h3, h4 {
+    @apply font-display font-semibold tracking-tight;
+  }
+}
+
+/* Utilitaires custom Ankora */
+@layer utilities {
+  /* Texte degrade signature */
+  .text-ankora-gradient {
+    background: linear-gradient(135deg, #6366F1 0%, #A78BFA 50%, #F0ABFC 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
+  }
+
+  /* Border degrade pour cards premium */
+  .border-ankora-gradient {
+    border: 1px solid transparent;
+    background:
+      linear-gradient(white, white) padding-box,
+      linear-gradient(135deg, #6366F1, #A78BFA, #F0ABFC) border-box;
+  }
+}

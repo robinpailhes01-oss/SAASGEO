@@ -51,4 +51,5 @@ Thumbs.db
 # Outputs locaux Ankora
 /tmp/
 /scrape-cache/
+/outputs/
 *.pdf-temp

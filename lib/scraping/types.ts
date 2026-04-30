@@ -94,5 +94,12 @@ export interface TechAuditResult {
     has_robots: boolean;
     has_llms_txt: boolean;
     is_spa: boolean;
+    // True si la page recue ressemble a un challenge anti-bot
+    // (Vercel Security Checkpoint, Cloudflare Turnstile, etc.).
+    // Implique que tout l'audit est probablement biaise et le score
+    // tres bas est en lui-meme un signal GEO majeur (les IA aussi
+    // sont bloquees).
+    is_anti_bot_blocked: boolean;
+    anti_bot_signal?: string;
   };
 }

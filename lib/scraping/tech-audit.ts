@@ -33,6 +33,26 @@ import {
   getDomain,
 } from "./parser";
 
+// Detection anti-bot : signaux explicites de pages de challenge
+// (Vercel Security Checkpoint, Cloudflare, Akamai, etc.)
+const ANTI_BOT_SIGNALS = [
+  { pattern: /vercel security checkpoint/i, name: "Vercel Security Checkpoint" },
+  { pattern: /just a moment\.{3}/i, name: "Cloudflare challenge" },
+  { pattern: /cf-browser-verification/i, name: "Cloudflare browser verification" },
+  { pattern: /attention required! \| cloudflare/i, name: "Cloudflare attention required" },
+  { pattern: /access denied[\s\S]{0,200}akamai/i, name: "Akamai access denied" },
+  { pattern: /please enable javascript and cookies to continue/i, name: "Generic JS challenge" },
+];
+
+function detectAntiBot(html: string, title: string): { blocked: boolean; signal?: string } {
+  for (const s of ANTI_BOT_SIGNALS) {
+    if (s.pattern.test(html) || s.pattern.test(title)) {
+      return { blocked: true, signal: s.name };
+    }
+  }
+  return { blocked: false };
+}
+
 import { runFoundations } from "./categories/foundations";
 import { runGeoTriptych } from "./categories/geo-triptych";
 import { runStructuredData } from "./categories/structured-data";
@@ -244,6 +264,16 @@ export async function runTechAudit(
   const meta = extractMeta($h);
   const language = meta.lang ?? meta.og.locale ?? null;
 
+  // Detection anti-bot : si le HTML ressemble a un challenge,
+  // on le flag pour que le rapport l'indique explicitement.
+  const titleMatch = homeFetch.html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+  const homeTitle = titleMatch ? titleMatch[1].trim() : "";
+  const antiBot = detectAntiBot(homeFetch.html, homeTitle);
+
+  if (antiBot.blocked) {
+    log(`[audit] ⚠ Page anti-bot detectee : ${antiBot.signal}. Score biaise — Browserless requis pour audit complet.`);
+  }
+
   log(`[audit] termine en ${(duration / 1000).toFixed(1)}s — score ${totalScore}/100`);
 
   return {
@@ -264,6 +294,8 @@ export async function runTechAudit(
       has_robots: !!robotsRes.content,
       has_llms_txt: !!llmsRes.content,
       is_spa: isLikelySpa(homeFetch.html),
+      is_anti_bot_blocked: antiBot.blocked,
+      anti_bot_signal: antiBot.signal,
     },
   };
 }

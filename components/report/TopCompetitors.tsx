@@ -144,7 +144,9 @@ export function TopCompetitors({
           <div className="my-2 h-px w-full bg-gradient-to-r from-transparent via-ankora-border to-transparent" />
         </motion.li>
 
-        {/* Ligne "VOUS" */}
+        {/* Ligne "VOUS" — denominateur unifie sur 120 (= totalQueries * 4)
+            pour comparaison juste avec les concurrents (qui sont sur 120).
+            Avant, on affichait Vous /30 vs concurrent /120 = asymetrie. */}
         <motion.li
           initial={reduce ? false : { opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
@@ -170,7 +172,7 @@ export function TopCompetitors({
             </span>
             <span className="text-sm text-ankora-text-muted">
               {" "}
-              / {totalQueries}
+              / {totalQueries * 4}
             </span>
           </span>
         </motion.li>

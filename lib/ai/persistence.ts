@@ -119,6 +119,12 @@ export async function persistBusinessInfo(args: {
     industry: args.business.industry,
     services: args.business.services,
     geo_zone: args.business.geo_zone,
+    // Localisation structuree — drive la generation de queries dans
+    // stepGenerateQueries (cf. lib/ai/prompts/queries-gen.ts).
+    city: args.business.city ?? null,
+    region: args.business.region ?? null,
+    country: args.business.country ?? null,
+    business_scope: args.business.business_scope ?? "national",
     detected_competitors: args.business.detected_competitors,
     raw_extraction: args.business as unknown as Database["public"]["Tables"]["audit_business_info"]["Insert"]["raw_extraction"],
   };

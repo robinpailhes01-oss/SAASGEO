@@ -33,6 +33,16 @@ import { normalizeCompetitorKey, type AIResponseSample } from "@/lib/report/type
 type AIResponsePreviewProps = {
   samples: AIResponseSample[];
   brandName: string;
+  // Localisation detectee — affichee en eyebrow pour ancrer la
+  // pertinence locale du rapport. Si scope=local + city : badge vert
+  // "DETECTION : Activite locale a {city}". Si scope=national/inconnu
+  // sans city : disclaimer subtil. Aucun bandeau si on ne peut rien
+  // dire d'utile.
+  location?: {
+    scope: "local" | "national" | "international";
+    city: string | null;
+    region: string | null;
+  };
 };
 
 const CATEGORY_LABEL: Record<string, string> = {
@@ -288,11 +298,39 @@ function SampleCard({
 export function AIResponsePreview({
   samples,
   brandName,
+  location,
 }: AIResponsePreviewProps) {
   if (samples.length === 0) return null;
 
   // Texte d'introduction adapte au cas
   const allMentioned = samples.every((s) => s.brand_mentioned);
+
+  // Determination du badge localisation a afficher.
+  // - local + city  -> badge vert "Activite locale a Carnon (Herault)"
+  // - autre + pas de city detectee -> disclaimer subtil orange
+  // - sinon -> aucun badge
+  const locationBadge = (() => {
+    if (!location) return null;
+    if (location.scope === "local" && location.city) {
+      const sublabel = location.region ? ` (${location.region})` : "";
+      return {
+        tone: "success" as const,
+        label: `DÉTECTION : Activité locale à ${location.city}${sublabel}`,
+      };
+    }
+    if (
+      location.scope !== "international" &&
+      !location.city &&
+      !location.region
+    ) {
+      return {
+        tone: "warning" as const,
+        label:
+          "Localisation non détectée — audit basé sur le marché national. Pour un audit local, ajoutez votre adresse à votre site.",
+      };
+    }
+    return null;
+  })();
 
   return (
     <section
@@ -300,6 +338,28 @@ export function AIResponsePreview({
       aria-labelledby="ai-response-preview-label"
     >
       <div className="text-center">
+        {locationBadge ? (
+          <div
+            className={cn(
+              "mx-auto mb-4 inline-flex items-center gap-2 rounded-full px-3 py-1 text-[11px] sm:text-xs font-semibold uppercase tracking-wider",
+              locationBadge.tone === "success"
+                ? "bg-success/15 text-success"
+                : "bg-warning/15 text-warning"
+            )}
+          >
+            <span
+              className={cn(
+                "inline-block h-1.5 w-1.5 rounded-full",
+                locationBadge.tone === "success"
+                  ? "bg-success"
+                  : "bg-warning"
+              )}
+              aria-hidden="true"
+            />
+            {locationBadge.label}
+          </div>
+        ) : null}
+
         <p
           id="ai-response-preview-label"
           className="text-xs sm:text-sm font-medium uppercase tracking-[0.2em] text-ankora-text-muted"

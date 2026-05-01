@@ -283,7 +283,7 @@ export async function getReport(auditId: string): Promise<ReportData | null> {
       .maybeSingle(),
     sb
       .from("audit_business_info")
-      .select("brand_name, industry, geo_zone")
+      .select("brand_name, industry, geo_zone, city, region, country, business_scope")
       .eq("audit_id", auditId)
       .maybeSingle(),
     sb.from("queries").select("id").eq("audit_id", auditId),
@@ -443,15 +443,14 @@ export async function getReport(auditId: string): Promise<ReportData | null> {
             : 0,
       }));
 
-    // ----- Mentions de la marque (par query, pas par reponse) -----
-    // Une query "compte" si au moins une des 4 IA cite la marque.
-    const queriesWithBrand = new Set<string>();
-    for (const a of analyses) {
-      if (!a.brand_mentioned) continue;
-      const resp = responsesById.get(a.response_id);
-      if (resp) queriesWithBrand.add(resp.query_id);
-    }
-    your_mentions_count = queriesWithBrand.size;
+    // ----- Mentions de la marque (par REPONSE, base unifiee /120) -----
+    // Avant la refonte localisation, on comptait par query unique
+    // (Set<query_id>, max 30) — ce qui creait une asymetrie visuelle
+    // sur le podium TopCompetitors (concurrent 18/120 vs Vous 10/30).
+    // On unifie maintenant sur la meme base que les concurrents : nombre
+    // de reponses (sur les 120 = 30 queries x 4 IA) ou la marque est
+    // citee. Identique a brand_mentions_count.
+    your_mentions_count = brand_mentions_count;
 
     // ----- Selection des apercus IA (Phase D.2 - bloc 5) -----
     // Strategie :
@@ -591,6 +590,14 @@ export async function getReport(auditId: string): Promise<ReportData | null> {
     brand_name: business?.brand_name ?? prettyHostname(audit.url),
     industry: business?.industry ?? null,
     geo_zone: business?.geo_zone ?? null,
+    city: business?.city ?? null,
+    region: business?.region ?? null,
+    country: business?.country ?? null,
+    business_scope: ((business?.business_scope as
+      | "local"
+      | "national"
+      | "international"
+      | undefined) ?? "national"),
 
     global_score: scores?.global_score ?? 0,
     technical_score: scores?.technical_score ?? 0,

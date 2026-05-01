@@ -165,33 +165,45 @@ export type Database = {
           audit_id: string
           brand_aliases: string[]
           brand_name: string
+          business_scope: string
+          city: string | null
+          country: string | null
           created_at: string
           detected_competitors: string[]
           geo_zone: string | null
           industry: string | null
           raw_extraction: Json | null
+          region: string | null
           services: Json
         }
         Insert: {
           audit_id: string
           brand_aliases?: string[]
           brand_name: string
+          business_scope?: string
+          city?: string | null
+          country?: string | null
           created_at?: string
           detected_competitors?: string[]
           geo_zone?: string | null
           industry?: string | null
           raw_extraction?: Json | null
+          region?: string | null
           services?: Json
         }
         Update: {
           audit_id?: string
           brand_aliases?: string[]
           brand_name?: string
+          business_scope?: string
+          city?: string | null
+          country?: string | null
           created_at?: string
           detected_competitors?: string[]
           geo_zone?: string | null
           industry?: string | null
           raw_extraction?: Json | null
+          region?: string | null
           services?: Json
         }
         Relationships: []

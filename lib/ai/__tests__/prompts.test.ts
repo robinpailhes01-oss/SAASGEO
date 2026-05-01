@@ -40,6 +40,10 @@ describe("prompts/brand-extract", () => {
       industry: "Charter de yacht",
       services: ["Nuit insolite", "Sortie en mer"],
       geo_zone: "Carnon, Languedoc",
+      city: "Carnon",
+      region: "Hérault",
+      country: "France",
+      business_scope: "local",
       detected_competitors: [],
       language: "fr",
     };
@@ -53,6 +57,10 @@ describe("prompts/brand-extract", () => {
       industry: null,
       services: [],
       geo_zone: null,
+      city: null,
+      region: null,
+      country: null,
+      business_scope: "national",
       detected_competitors: [],
       language: "klingon",
     };
@@ -67,6 +75,10 @@ describe("prompts/queries-gen", () => {
     industry: "Charter yacht",
     services: ["Nuit insolite", "Sortie en mer"],
     geo_zone: "Carnon",
+    city: null,
+    region: null,
+    country: null,
+    business_scope: "national" as const,
     detected_competitors: ["Yacht XYZ"],
     language: "fr" as const,
   };

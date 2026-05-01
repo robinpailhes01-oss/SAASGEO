@@ -174,6 +174,11 @@ export default async function AuditReportPage({
       <AIResponsePreview
         samples={report.samples}
         brandName={report.brand_name}
+        location={{
+          scope: report.business_scope,
+          city: report.city,
+          region: report.region,
+        }}
       />
 
       {/* Bloc 6 — Pourquoi vous êtes invisible (3 cards verticales) */}

@@ -47,6 +47,11 @@ export type ProviderScore = {
 // Sous-ensemble du payload utilise en Phase D.1.
 // D.2/D.3/D.4 enrichiront le ReportData avec competitors, ai_responses,
 // recommendations, etc. (extension non breaking : champs optionnels).
+// Echelle business detectee par le LLM Haiku (cf. brand-extract.ts).
+// Drive (a) la generation de queries (50/30/20 si local), (b)
+// l'affichage d'un bandeau de localisation dans le rapport.
+export type BusinessScope = "local" | "national" | "international";
+
 export type ReportData = {
   // -- Audit metadata --
   audit_id: string;
@@ -59,6 +64,11 @@ export type ReportData = {
   brand_name: string;
   industry: string | null;
   geo_zone: string | null;
+  // Localisation structuree (Phase localisation)
+  city: string | null;
+  region: string | null;
+  country: string | null;
+  business_scope: BusinessScope;
 
   // -- Scores --
   global_score: number;
@@ -76,7 +86,12 @@ export type ReportData = {
 
   // -- Phase D.2 : top 3 concurrents + apercus IA --
   top_competitors: CompetitorRanking[]; // 0..3 entrees
-  your_mentions_count: number; // queries (sur total) ou la marque apparait au moins 1 fois
+  // Nombre de reponses IA (sur total_queries * 4 = 120) ou la marque
+  // est mentionnee. MEME base que competitor.mentions pour assurer
+  // une comparaison juste sur le podium TopCompetitors. Avant cette
+  // refonte (Phase localisation), c'etait une autre metrique sur 30,
+  // ce qui creait une asymetrie visuelle (concurrent 18/120, vous 10/30).
+  your_mentions_count: number;
   samples: AIResponseSample[]; // 0..2 apercus
 
   // -- Phase D.3 : pourquoi invisible + actions prioritaires --

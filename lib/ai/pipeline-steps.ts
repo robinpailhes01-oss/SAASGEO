@@ -141,6 +141,10 @@ export async function stepExtractBusiness(args: {
       industry: null,
       services: [],
       geo_zone: null,
+      city: null,
+      region: null,
+      country: null,
+      business_scope: "national",
       detected_competitors: [],
       language: "fr",
     };

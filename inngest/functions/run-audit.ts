@@ -83,9 +83,13 @@ export const runAuditFunction = inngest.createFunction(
       // -------- Step 4 : Visibility tracking — fan-out 4 providers en parallele --------
       // Chaque provider tourne dans son propre step.run avec retries natifs.
       // Si Anthropic crash, OpenAI / Perplexity / Gemini deja checkpointed.
-      const queryIdMap = new Map(
-        Array.from(queriesResult.query_id_map.entries())
-      );
+      //
+      // Note serialisation Inngest : `query_id_map` est un Record<string,
+      // string> (plain object) — directement JSON-serialisable. C'etait
+      // un Map JS avant, ce qui causait "TypeError: ...entries is not a
+      // function" car JSON.stringify d'un Map donne "{}". Cf.
+      // lib/ai/query-id-map.ts pour le contrat et le helper defensif.
+      const queryIdMap = queriesResult.query_id_map;
 
       // Update status avant le fan-out
       await updateAuditStatus({

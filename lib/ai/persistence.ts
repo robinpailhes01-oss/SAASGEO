@@ -21,6 +21,7 @@ import type { Database } from "@/lib/supabase/types";
 import type { TechAuditResult } from "@/lib/scraping/types";
 import type { BusinessInfo } from "./prompts/brand-extract";
 import type { Synthesis } from "./prompts/synthesis";
+import { toQueryIdMap, lookupQueryId, type QueryIdMap } from "./query-id-map";
 import type {
   VisibilityQuery,
   VisibilityResponse,
@@ -158,7 +159,7 @@ export async function persistTechnicalChecks(args: {
 export async function persistQueries(args: {
   audit_id: string;
   queries: VisibilityQuery[];
-}): Promise<Map<string, string>> {
+}): Promise<QueryIdMap> {
   const sb = createAdminClient();
   const rows: DB["queries"]["Insert"][] = args.queries.map((q) => ({
     audit_id: args.audit_id,
@@ -174,11 +175,13 @@ export async function persistQueries(args: {
   const positionToSupabaseId = new Map<number, string>();
   for (const r of data) positionToSupabaseId.set(r.position, r.id);
 
-  // Map local_id → supabase_id via la position (stable)
-  const localToSupabase = new Map<string, string>();
+  // Map local_id → supabase_id via la position (stable). On retourne
+  // un plain object (Record) plutot qu'un Map JS pour rester
+  // serialisable JSON entre les steps Inngest (cf. lib/ai/query-id-map).
+  const localToSupabase: QueryIdMap = {};
   for (const q of args.queries) {
     const supId = positionToSupabaseId.get(q.position);
-    if (supId) localToSupabase.set(q.id, supId);
+    if (supId) localToSupabase[q.id] = supId;
   }
   return localToSupabase;
 }
@@ -189,14 +192,19 @@ export async function persistQueries(args: {
 // ---------------------------------------------------------------------
 export async function persistAiResponses(args: {
   responses: VisibilityResponse[];
-  query_id_map: Map<string, string>;
+  query_id_map: QueryIdMap;
 }): Promise<void> {
   const sb = createAdminClient();
+
+  // Defense en profondeur : si un caller passe encore un Map ou une
+  // structure inattendue (legacy code, deserialisation Inngest ratee),
+  // toQueryIdMap normalise vers Record sans planter.
+  const idMap = toQueryIdMap(args.query_id_map);
 
   // Insert ai_responses
   const responseRows: DB["ai_responses"]["Insert"][] = args.responses.map(
     (r) => ({
-      query_id: args.query_id_map.get(r.query_id) ?? r.query_id,
+      query_id: lookupQueryId(idMap, r.query_id),
       provider: r.provider,
       model: r.model,
       raw_response: r.response_text || null,
@@ -229,7 +237,7 @@ export async function persistAiResponses(args: {
   const analysisRows: DB["ai_response_analysis"]["Insert"][] = [];
   for (const r of args.responses) {
     if (!r.analysis) continue;
-    const queryIdSb = args.query_id_map.get(r.query_id) ?? r.query_id;
+    const queryIdSb = lookupQueryId(idMap, r.query_id);
     const respId = responseIdMap.get(`${queryIdSb}|${r.provider}`);
     if (!respId) continue;
     analysisRows.push({

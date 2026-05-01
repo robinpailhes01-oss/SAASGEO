@@ -201,7 +201,10 @@ export async function runFullAudit(
       `   ${queries.length} queries generees (10 branded + 10 service + 10 comparative)`
     );
 
-    let queryIdMap = new Map<string, string>();
+    // Plain object (Record) plutot que Map pour rester aligne avec
+    // le contrat QueryIdMap utilise par les steps Inngest. Cf.
+    // lib/ai/query-id-map.ts.
+    let queryIdMap: import("./query-id-map").QueryIdMap = {};
     if (persist) {
       queryIdMap = await persistQueries({ audit_id, queries });
     }

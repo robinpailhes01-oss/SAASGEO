@@ -24,6 +24,7 @@ import {
   BusinessInfoSchema,
   type BusinessInfo,
 } from "./prompts/brand-extract";
+import type { QueryIdMap } from "./query-id-map";
 import {
   buildQueriesGenPrompt,
   GeneratedQueriesSchema,
@@ -165,7 +166,7 @@ export async function stepGenerateQueries(args: {
   audit_id: string;
   business: BusinessInfo;
   persist: boolean;
-}): Promise<{ queries: VisibilityQuery[]; query_id_map: Map<string, string> }> {
+}): Promise<{ queries: VisibilityQuery[]; query_id_map: QueryIdMap }> {
   if (args.persist) {
     await updateAuditStatus({
       audit_id: args.audit_id,
@@ -210,7 +211,7 @@ export async function stepGenerateQueries(args: {
     queries.push({ id: randomUUID(), text, category: "comparative", position: pos++ });
   }
 
-  let query_id_map = new Map<string, string>();
+  let query_id_map: QueryIdMap = {};
   if (args.persist) {
     query_id_map = await persistQueries({ audit_id: args.audit_id, queries });
     await updateAuditStatus({
@@ -233,7 +234,7 @@ export async function stepTrackVisibility(args: {
   audit_id: string;
   queries: VisibilityQuery[];
   business: BusinessInfo;
-  query_id_map: Map<string, string>;
+  query_id_map: QueryIdMap;
   geo_target?: string | null;
   concurrency?: number;
   persist: boolean;
@@ -309,7 +310,7 @@ export async function stepTrackVisibilityForProvider(args: {
 export async function stepAggregateVisibility(args: {
   audit_id: string;
   responses: VisibilityResponse[];
-  query_id_map: Map<string, string>;
+  query_id_map: QueryIdMap;
   persist: boolean;
 }): Promise<VisibilityScores> {
   const scores = computeVisibilityScores(args.responses);

@@ -1,18 +1,27 @@
 // =====================================================================
 // <WhyUrgent /> — section "Vos clients utilisent deja les IA".
 //
-// Bloc compact, ton serieux, leger en visuel. L'objectif emotionnel
-// est l'inquietude (etape 2 du parcours surprise -> inquietude -> espoir).
-// Chiffre cle mis en avant en gros pour ancrer la realite.
+// V2 (Landing v2) : layout 2 colonnes desktop (texte + 3 stats a
+// gauche, AISearchMockup a droite) qui s'empile en 1 colonne mobile.
+// L'ajout du mockup style chat ChatGPT avec overlay "marque absente"
+// cree le declic emotionnel : les chiffres + une preuve visuelle.
+//
+// Bloc compact, ton serieux. Etape 2 du parcours surprise -> inquietude
+// -> espoir. Chiffre cle mis en avant en gros pour ancrer la realite.
 // =====================================================================
 
 import { TrendingUp, AlertTriangle, Eye } from "lucide-react";
 
 import { AnimatedSection } from "./AnimatedSection";
+import { AISearchMockup } from "./AISearchMockup";
 import { Container } from "@/components/layout/Container";
 import { Card, CardContent } from "@/components/ui/card";
 
-const stats: { icon: React.ComponentType<{ className?: string }>; label: string; value: string }[] = [
+const stats: {
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  value: string;
+}[] = [
   {
     icon: TrendingUp,
     value: "+200%",
@@ -37,40 +46,55 @@ export function WhyUrgent() {
       aria-labelledby="urgent-title"
     >
       <Container>
-        <div className="mx-auto max-w-3xl text-center">
-          <h2
-            id="urgent-title"
-            className="font-display text-3xl sm:text-4xl font-bold tracking-tight text-ankora-text"
-          >
-            Vos clients utilisent déjà les IA
-          </h2>
-          <p className="mt-5 text-base sm:text-lg text-ankora-text-soft leading-relaxed">
-            Les IA conversationnelles transforment la recherche en ligne. Si ChatGPT ne recommande pas votre marque, vous perdez des clients chaque jour sans le savoir. Vos concurrents, eux, sont déjà visibles.
-          </p>
-        </div>
+        <div className="grid gap-10 lg:grid-cols-[1.1fr_1fr] lg:gap-14 lg:items-center">
+          {/* Colonne texte + stats */}
+          <div>
+            <h2
+              id="urgent-title"
+              className="font-display text-3xl sm:text-4xl font-bold tracking-tight text-ankora-text"
+            >
+              Vos clients utilisent déjà les IA
+            </h2>
+            <p className="mt-5 text-base sm:text-lg text-ankora-text-soft leading-relaxed max-w-xl">
+              Les IA conversationnelles transforment la recherche en ligne. Si
+              ChatGPT ne recommande pas votre marque, vous perdez des clients
+              chaque jour sans le savoir. Vos concurrents, eux, sont déjà
+              visibles.
+            </p>
 
-        <ul className="mt-12 grid gap-4 sm:grid-cols-3 sm:gap-6">
-          {stats.map((stat, i) => {
-            const Icon = stat.icon;
-            return (
-              <li key={stat.label}>
-                <AnimatedSection as="div" delay={i * 0.08}>
-                  <Card className="h-full">
-                    <CardContent className="pt-7 pb-6 text-center">
-                      <Icon className="mx-auto h-6 w-6 text-primary" aria-hidden="true" />
-                      <p className="mt-4 font-mono text-3xl font-semibold text-ankora-text">
-                        {stat.value}
-                      </p>
-                      <p className="mt-2 text-sm text-ankora-text-soft leading-snug">
-                        {stat.label}
-                      </p>
-                    </CardContent>
-                  </Card>
-                </AnimatedSection>
-              </li>
-            );
-          })}
-        </ul>
+            <ul className="mt-8 grid gap-3 sm:grid-cols-3 lg:grid-cols-1 lg:gap-3">
+              {stats.map((stat, i) => {
+                const Icon = stat.icon;
+                return (
+                  <li key={stat.label}>
+                    <AnimatedSection as="div" delay={i * 0.08}>
+                      <Card className="h-full">
+                        <CardContent className="pt-5 pb-5 px-4 lg:flex lg:items-center lg:gap-4">
+                          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary lg:h-11 lg:w-11">
+                            <Icon className="h-5 w-5" aria-hidden="true" />
+                          </span>
+                          <div className="mt-3 lg:mt-0">
+                            <p className="font-mono text-2xl lg:text-3xl font-semibold text-ankora-text leading-none">
+                              {stat.value}
+                            </p>
+                            <p className="mt-1.5 text-xs sm:text-sm text-ankora-text-soft leading-snug">
+                              {stat.label}
+                            </p>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </AnimatedSection>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+
+          {/* Colonne mockup */}
+          <div className="flex items-center justify-center">
+            <AISearchMockup />
+          </div>
+        </div>
       </Container>
     </AnimatedSection>
   );

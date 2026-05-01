@@ -1,13 +1,17 @@
 // =====================================================================
-// Landing Ankora — Bloc 5 Phase B
+// Landing Ankora — Bloc 5 (Phase B + Landing v2)
 //
-// Composition :
+// Composition v2 :
 //   1. Header (variant minimal, pour ne pas surcharger le hero)
-//   2. Hero : titre choc + sous-titre + formulaire d'audit + AILogos
-//      (fond radial lavande tres leger pour ancrer le brand)
-//   3. HowItWorks : 3 etapes
-//   4. WhyUrgent : section emotionnelle "vos clients utilisent deja les IA"
-//   5. Footer
+//   2. Hero : titre choc + sous-titre + formulaire + AILogos +
+//      HeroMockup (apercu rapport en perspective avec cards flottantes)
+//   3. MetricsBar : 4 KPI cards reels (4 IA, 30 questions, 51 criteres,
+//      ~5 minutes) — ancre le serieux des le "above the fold scroll"
+//   4. HowItWorks : 3 etapes
+//   5. WhyAnkora : 3 differenciateurs (tourisme, francais, plan d'action)
+//   6. WhyUrgent v2 : layout 2 cols texte+stats / AISearchMockup
+//   7. FinalCta : encadre gradient avec form integre
+//   8. Footer
 //
 // SEO : meta title + description, OpenGraph, Twitter Card, JSON-LD
 // WebApplication. Fonts deja optimises au layout root (Geist + Inter +
@@ -20,10 +24,13 @@ import { Header } from "@/components/layout/Header";
 import { Footer } from "@/components/layout/Footer";
 import { Container } from "@/components/layout/Container";
 import { HeroAuditForm } from "@/components/landing/HeroAuditForm";
+import { HeroMockup } from "@/components/landing/HeroMockup";
 import { AILogos } from "@/components/landing/AILogos";
+import { MetricsBar } from "@/components/landing/MetricsBar";
 import { HowItWorks } from "@/components/landing/HowItWorks";
+import { WhyAnkora } from "@/components/landing/WhyAnkora";
 import { WhyUrgent } from "@/components/landing/WhyUrgent";
-import { AnimatedSection } from "@/components/landing/AnimatedSection";
+import { FinalCta } from "@/components/landing/FinalCta";
 
 const SITE_TITLE =
   "Ankora — Audit gratuit de votre visibilité sur ChatGPT, Claude, Perplexity, Gemini";
@@ -83,7 +90,7 @@ export default function HomePage() {
         {/* ---------- HERO ---------- */}
         <section
           id="audit"
-          className="relative overflow-hidden pt-16 pb-24 sm:pt-24 sm:pb-32"
+          className="relative overflow-hidden pt-16 pb-12 sm:pt-24 sm:pb-16"
           aria-labelledby="hero-title"
         >
           {/* Fond radial lavande tres leger (style NuroAI) — purement decoratif */}
@@ -118,36 +125,28 @@ export default function HomePage() {
                 <HeroAuditForm />
               </div>
 
-              <AILogos className="mt-16 sm:mt-20" />
+              <AILogos className="mt-12 sm:mt-14" />
             </div>
+
+            {/* Mockup apercu rapport (apres logos IA, avant scroll) */}
+            <HeroMockup className="mt-10 sm:mt-14" />
           </Container>
         </section>
+
+        {/* ---------- KPI CARDS REELS ---------- */}
+        <MetricsBar />
 
         {/* ---------- COMMENT CA MARCHE ---------- */}
         <HowItWorks />
 
-        {/* ---------- POURQUOI C'EST URGENT ---------- */}
+        {/* ---------- POURQUOI ANKORA ---------- */}
+        <WhyAnkora />
+
+        {/* ---------- POURQUOI C'EST URGENT (avec mockup chat IA) ---------- */}
         <WhyUrgent />
 
         {/* ---------- CTA FINAL ---------- */}
-        <AnimatedSection className="py-20 sm:py-28" aria-labelledby="cta-final-title">
-          <Container>
-            <div className="mx-auto max-w-2xl text-center">
-              <h2
-                id="cta-final-title"
-                className="font-display text-3xl sm:text-4xl font-bold tracking-tight text-ankora-text"
-              >
-                Prêt à savoir ce que les IA disent de vous ?
-              </h2>
-              <p className="mt-4 text-base sm:text-lg text-ankora-text-soft">
-                Cinq minutes, zéro inscription, un rapport tout de suite.
-              </p>
-              <div className="mt-8">
-                <HeroAuditForm />
-              </div>
-            </div>
-          </Container>
-        </AnimatedSection>
+        <FinalCta />
       </main>
 
       <Footer />

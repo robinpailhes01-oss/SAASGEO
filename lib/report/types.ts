@@ -78,6 +78,10 @@ export type ReportData = {
   top_competitors: CompetitorRanking[]; // 0..3 entrees
   your_mentions_count: number; // queries (sur total) ou la marque apparait au moins 1 fois
   samples: AIResponseSample[]; // 0..2 apercus
+
+  // -- Phase D.3 : pourquoi invisible + actions prioritaires --
+  why_reasons: WhyReason[]; // exactement 3 (technique + notoriete + contenu)
+  recommendations: RecommendationsSummary;
 };
 
 // Helper UI : retourne le ton selon le score (rouge/orange/vert).
@@ -125,3 +129,28 @@ export function normalizeCompetitorKey(name: string): string {
     .replace(/^www\./, "")
     .replace(/\.(com|fr|io|co|app|ai|net|org)$/, "");
 }
+
+// =====================================================================
+// Phase D.3 — Pourquoi invisible + actions prioritaires
+// =====================================================================
+
+// Une raison du Bloc 6 : 3 cards verticales (technique / notoriete / contenu).
+export type WhyReason = {
+  slot: "technical" | "authority" | "content";
+  title: string;
+  subtitle: string;
+};
+
+// Une action du Bloc 7 : top 3 a partir des audit_recommendations.
+export type PriorityAction = {
+  position: number; // 1, 2, 3
+  title: string;
+  description: string; // tronque a ~120 chars
+  impact_label: string; // "+15 points en 30 jours"
+};
+
+// Compte total de recommandations (pour le footer "Plan complet de N actions").
+export type RecommendationsSummary = {
+  top3: PriorityAction[];
+  total_count: number;
+};

@@ -20,19 +20,26 @@ import {
   PROVIDER_LABELS,
   PROVIDER_ORDER,
   normalizeCompetitorKey,
+  scoreTone,
   type AIProvider,
   type AIResponseSample,
   type CompetitorRanking,
+  type PriorityAction,
   type ProviderScore,
   type QueryCategory,
+  type RecommendationsSummary,
   type ReportData,
+  type WhyReason,
 } from "./types";
 
 export type {
   AIResponseSample,
   CompetitorRanking,
+  PriorityAction,
   ProviderScore,
+  RecommendationsSummary,
   ReportData,
+  WhyReason,
 } from "./types";
 export {
   scoreTone,
@@ -40,6 +47,170 @@ export {
   PROVIDER_COLORS,
   PROVIDER_ORDER,
 } from "./types";
+
+// ---------------------------------------------------------------------
+// Phase D.3 helpers : pourquoi invisible + actions prioritaires
+// ---------------------------------------------------------------------
+
+type TechCheck = {
+  label: string;
+  status?: "pass" | "warn" | "fail";
+  recommendation?: string;
+};
+
+// Detecte la cause technique majeure a partir des checks failed/warned.
+// Ordre de priorite : llms.txt > sitemap > robots > schema/structured > 1ere
+// failed restante > fallback generique.
+function deriveTechnicalReason(failedChecks: TechCheck[]): {
+  title: string;
+  subtitle: string;
+} {
+  const labels = failedChecks.map((c) => (c.label ?? "").toLowerCase());
+  const has = (needle: string) => labels.some((l) => l.includes(needle));
+
+  if (has("llms.txt") || has("llm.txt")) {
+    return {
+      title: "Aucun fichier llms.txt sur votre site",
+      subtitle:
+        "Sans ce fichier, les IA ne savent pas comment lire votre offre rapidement.",
+    };
+  }
+  if (has("sitemap")) {
+    return {
+      title: "Sitemap.xml manquant ou mal configuré",
+      subtitle:
+        "Les IA n'arrivent pas à indexer toutes vos pages importantes.",
+    };
+  }
+  if (has("robots")) {
+    return {
+      title: "Fichier robots.txt mal configuré",
+      subtitle:
+        "Les robots IA (GPTBot, ClaudeBot…) sont peut-être bloqués par votre site.",
+    };
+  }
+  if (has("schema") || has("structured") || has("jsonld") || has("json-ld")) {
+    return {
+      title: "Données structurées absentes de vos pages",
+      subtitle:
+        "Sans balisage Schema.org, les IA ne savent pas ce que vous vendez exactement.",
+    };
+  }
+  // Fallback : on prend le 1er failed comme titre s'il existe
+  const first = failedChecks[0];
+  if (first && first.label) {
+    return {
+      title: first.label,
+      subtitle:
+        "Les IA ne peuvent pas accéder correctement à votre site pour vous citer.",
+    };
+  }
+  return {
+    title: "Configuration technique incomplète pour les IA",
+    subtitle:
+      "Plusieurs prérequis ne sont pas en place pour que les IA vous lisent.",
+  };
+}
+
+// Construit les 3 raisons du bloc "Pourquoi vous etes invisible".
+// Si le score est >= 70, on inverse le ton (raisons positives).
+function buildWhyReasons(
+  globalScore: number,
+  failedChecks: TechCheck[]
+): WhyReason[] {
+  const tone = scoreTone(globalScore);
+  if (tone === "high") {
+    return [
+      {
+        slot: "technical",
+        title: "Vos fondations techniques sont en place",
+        subtitle:
+          "Les IA peuvent lire votre site sans friction (sitemap, robots, balisage).",
+      },
+      {
+        slot: "authority",
+        title: "Votre marque est mentionnée par les bonnes sources",
+        subtitle:
+          "Wikipedia, presse spécialisée, annuaires sectoriels : les IA vous trouvent partout.",
+      },
+      {
+        slot: "content",
+        title: "Votre contenu adresse les bonnes questions",
+        subtitle:
+          "Vos pages répondent aux questions exactes que se posent vos clients.",
+      },
+    ];
+  }
+  return [
+    {
+      slot: "technical",
+      ...deriveTechnicalReason(failedChecks),
+    },
+    {
+      slot: "authority",
+      title: "Faible présence sur les sites cités par les IA",
+      subtitle:
+        "Les IA s'appuient sur Wikipedia, la presse et les annuaires sectoriels — où vous n'apparaissez pas encore.",
+    },
+    {
+      slot: "content",
+      title: "Votre contenu n'adresse pas les questions exactes de vos clients",
+      subtitle:
+        "Les IA cherchent des FAQ détaillées, des fiches services et des comparatifs précis.",
+    },
+  ];
+}
+
+// Genere le label d'impact d'une recommendation.
+// quick_win -> 30 jours, medium -> 60, long_term -> 90.
+// impact_score (1-10) -> environ 2 points de score par unite, borne [5..20].
+function impactLabel(
+  priority: "quick_win" | "medium" | "long_term",
+  impactScore: number
+): string {
+  const days = priority === "quick_win" ? 30 : priority === "medium" ? 60 : 90;
+  const pts = Math.max(5, Math.min(20, Math.round(impactScore * 2)));
+  return `+${pts} points en ${days} jours`;
+}
+
+// Tronque une description proprement sur le dernier espace avant la limite.
+function truncate(text: string, max: number): string {
+  if (text.length <= max) return text;
+  const slice = text.slice(0, max);
+  const lastSpace = slice.lastIndexOf(" ");
+  return (lastSpace > max * 0.7 ? slice.slice(0, lastSpace) : slice).trimEnd() + "…";
+}
+
+// Recommandations templatees de fallback (cas <3 recos en DB).
+const FALLBACK_RECOS: PriorityAction[] = [
+  {
+    position: 1,
+    title: "Créer votre fichier llms.txt",
+    description:
+      "Permet aux IA de comprendre votre offre instantanément, sans crawler toutes vos pages.",
+    impact_label: "+15 points en 30 jours",
+  },
+  {
+    position: 2,
+    title: "Optimiser vos pages services",
+    description:
+      "Structure adaptée aux questions clients : titres clairs, FAQ, exemples concrets.",
+    impact_label: "+18 points en 60 jours",
+  },
+  {
+    position: 3,
+    title: "Construire votre autorité externe",
+    description:
+      "Présence sur Wikipedia, presse sectorielle et annuaires métier que lisent les IA.",
+    impact_label: "+15 points en 90 jours",
+  },
+];
+
+const PRIORITY_RANK: Record<"quick_win" | "medium" | "long_term", number> = {
+  quick_win: 0,
+  medium: 1,
+  long_term: 2,
+};
 
 function prettyHostname(url: string): string {
   try {
@@ -89,8 +260,15 @@ export async function getReport(auditId: string): Promise<ReportData | null> {
 
   const sb = createAdminClient();
 
-  // Etape 1 : audit + scores + business + queries (parallele).
-  const [auditRes, scoresRes, businessRes, queriesRes] = await Promise.all([
+  // Etape 1 : audit + scores + business + queries + technical + recos (parallele).
+  const [
+    auditRes,
+    scoresRes,
+    businessRes,
+    queriesRes,
+    technicalRes,
+    recosRes,
+  ] = await Promise.all([
     sb
       .from("audits")
       .select("id, url, status, completed_at")
@@ -109,6 +287,15 @@ export async function getReport(auditId: string): Promise<ReportData | null> {
       .eq("audit_id", auditId)
       .maybeSingle(),
     sb.from("queries").select("id").eq("audit_id", auditId),
+    sb
+      .from("audit_technical")
+      .select("category, score, checks")
+      .eq("audit_id", auditId),
+    sb
+      .from("audit_recommendations")
+      .select("title, description, priority, impact_score, position")
+      .eq("audit_id", auditId)
+      .order("position", { ascending: true }),
   ]);
 
   if (auditRes.error || !auditRes.data) return null;
@@ -118,6 +305,58 @@ export async function getReport(auditId: string): Promise<ReportData | null> {
   const business = businessRes.data;
   const queryIds = (queriesRes.data ?? []).map((q) => q.id);
   const total_queries = queryIds.length;
+  const technicalRows = technicalRes.data ?? [];
+  const recoRows = recosRes.data ?? [];
+
+  // ---------------------------------------------------------------
+  // Phase D.3 : pourquoi invisible (failed checks aplaties)
+  // ---------------------------------------------------------------
+  const failedChecks: TechCheck[] = [];
+  for (const cat of technicalRows) {
+    const checks = Array.isArray(cat.checks) ? (cat.checks as unknown[]) : [];
+    for (const raw of checks) {
+      if (!raw || typeof raw !== "object") continue;
+      const c = raw as Record<string, unknown>;
+      const status = c.status as TechCheck["status"] | undefined;
+      const label = typeof c.label === "string" ? c.label : "";
+      if (!label) continue;
+      if (status === "fail" || status === "warn") {
+        failedChecks.push({
+          label,
+          status,
+          recommendation:
+            typeof c.recommendation === "string" ? c.recommendation : undefined,
+        });
+      }
+    }
+  }
+  const why_reasons = buildWhyReasons(scores?.global_score ?? 0, failedChecks);
+
+  // ---------------------------------------------------------------
+  // Phase D.3 : actions prioritaires (top 3 + total count)
+  // ---------------------------------------------------------------
+  const sortedRecos = [...recoRows].sort((a, b) => {
+    const pa = PRIORITY_RANK[a.priority] ?? 99;
+    const pb = PRIORITY_RANK[b.priority] ?? 99;
+    if (pa !== pb) return pa - pb;
+    if (a.impact_score !== b.impact_score) return b.impact_score - a.impact_score;
+    return (a.position ?? 99) - (b.position ?? 99);
+  });
+  const top3FromDb: PriorityAction[] = sortedRecos.slice(0, 3).map((r, i) => ({
+    position: i + 1,
+    title: r.title,
+    description: truncate(r.description ?? "", 120),
+    impact_label: impactLabel(r.priority, r.impact_score),
+  }));
+  // Si moins de 3 recos en DB, on complete avec les fallback templates.
+  const top3: PriorityAction[] = [...top3FromDb];
+  for (let i = top3.length; i < 3; i++) {
+    top3.push({ ...FALLBACK_RECOS[i], position: i + 1 });
+  }
+  const recommendations: RecommendationsSummary = {
+    top3,
+    total_count: recoRows.length,
+  };
 
   // Etape 2 : ai_responses + ai_response_analysis pour les 30 queries.
   // On fetch aussi le texte des queries (text + category) pour les
@@ -369,5 +608,7 @@ export async function getReport(auditId: string): Promise<ReportData | null> {
     top_competitors,
     your_mentions_count,
     samples,
+    why_reasons,
+    recommendations,
   };
 }

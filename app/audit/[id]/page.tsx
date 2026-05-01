@@ -30,6 +30,9 @@ import { Verdict } from "@/components/report/Verdict";
 import { LostOpportunities } from "@/components/report/LostOpportunities";
 import { TopCompetitors } from "@/components/report/TopCompetitors";
 import { AIResponsePreview } from "@/components/report/AIResponsePreview";
+import { WhyInvisible } from "@/components/report/WhyInvisible";
+import { PriorityActions } from "@/components/report/PriorityActions";
+import { UrgencyReminder } from "@/components/report/UrgencyReminder";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 
@@ -169,7 +172,22 @@ export default async function AuditReportPage({
         brandName={report.brand_name}
       />
 
-      {/* Blocs D.3 -> D.4 a venir */}
+      {/* Bloc 6 — Pourquoi vous êtes invisible (3 cards verticales) */}
+      <WhyInvisible
+        reasons={report.why_reasons}
+        globalScore={report.global_score}
+      />
+
+      {/* Bloc 7 — Ce qu'il faut faire (3 actions prioritaires) */}
+      <PriorityActions
+        actions={report.recommendations.top3}
+        totalCount={report.recommendations.total_count}
+      />
+
+      {/* Bloc 8 — Rappel d'urgence (ou de leadership selon score) */}
+      <UrgencyReminder globalScore={report.global_score} />
+
+      {/* Bloc D.4 (CTA + concurrent challenge + email) a venir */}
     </ReportLayout>
   );
 }

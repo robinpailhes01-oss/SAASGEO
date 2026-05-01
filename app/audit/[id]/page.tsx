@@ -33,6 +33,10 @@ import { AIResponsePreview } from "@/components/report/AIResponsePreview";
 import { WhyInvisible } from "@/components/report/WhyInvisible";
 import { PriorityActions } from "@/components/report/PriorityActions";
 import { UrgencyReminder } from "@/components/report/UrgencyReminder";
+import { MainCta } from "@/components/report/MainCta";
+import { ChallengeCompetitor } from "@/components/report/ChallengeCompetitor";
+import { EmailCapture } from "@/components/report/EmailCapture";
+import { PoweredByAnkora } from "@/components/report/PoweredByAnkora";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 
@@ -187,7 +191,23 @@ export default async function AuditReportPage({
       {/* Bloc 8 — Rappel d'urgence (ou de leadership selon score) */}
       <UrgencyReminder globalScore={report.global_score} />
 
-      {/* Bloc D.4 (CTA + concurrent challenge + email) a venir */}
+      {/* Bloc 9 — CTA principal (Calendly ou mailto fallback) */}
+      <MainCta
+        globalScore={report.global_score}
+        brandName={report.brand_name}
+        hostname={report.hostname}
+      />
+
+      {/* Bloc 10 — Défi concurrent (viralité légère) */}
+      <ChallengeCompetitor
+        topCompetitorName={report.top_competitors[0]?.name ?? null}
+      />
+
+      {/* Bloc 11 — Capture email inline */}
+      <EmailCapture auditId={report.audit_id} />
+
+      {/* Bonus — Powered by Ankora */}
+      <PoweredByAnkora />
     </ReportLayout>
   );
 }

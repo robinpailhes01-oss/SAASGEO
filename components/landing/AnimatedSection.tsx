@@ -20,6 +20,17 @@ import { cn } from "@/lib/utils";
 // On utilise donc HTMLMotionProps<"div"> comme base et on rend l'element
 // reel via un switch `as`. Au runtime les trois balises acceptent les
 // memes props DOM, c'est sans risque.
+//
+// IMPORTANT trigger viewport :
+//   On utilise `margin` (pixels absolus) plutot que `amount` (ratio)
+//   pour declencher l'animation. Raison : iOS Safari calcule mal les
+//   ratios IntersectionObserver pour les sections >= 100vh — avec
+//   amount: 0.2 sur une section de 1000px, il faut scroller jusqu'a
+//   200px de profondeur, ce qui rate des sections entieres sur iPad.
+//   `margin: "0px 0px -120px 0px"` signifie "declenche quand le top
+//   de la section est a -120px du bas du viewport" — i.e. des qu'elle
+//   commence a apparaitre. Comportement deterministe sur toutes les
+//   plateformes.
 // =====================================================================
 
 type AnimatedTag = "section" | "div" | "article";
@@ -44,7 +55,7 @@ export function AnimatedSection({
   const motionProps = {
     initial,
     whileInView: animateInView,
-    viewport: { once: true, amount: 0.2 },
+    viewport: { once: true, margin: "0px 0px -120px 0px" },
     transition: { duration: 0.6, ease: "easeOut", delay },
     className: cn(className),
     ...rest,

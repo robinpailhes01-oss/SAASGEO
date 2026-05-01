@@ -91,7 +91,7 @@ export function WhyInvisible({ reasons, globalScore }: WhyInvisibleProps) {
               key={r.slot}
               initial={reduce ? false : { opacity: 0, y: 12 }}
               whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, amount: 0.2 }}
+              viewport={{ once: true, margin: "0px 0px -120px 0px" }}
               transition={{
                 duration: 0.5,
                 delay: i * 0.15,

@@ -2,11 +2,18 @@
 // Page /admin/login
 //
 // Page minimaliste : un seul champ mot de passe + Server Action.
-// Le design final viendra avec Phase A.4 (shadcn/ui + design system).
-// Ici on se contente d'une UI fonctionnelle, sobre et accessible.
+// Le layout parent (app/admin/layout.tsx) fournit deja le header.
+// On centre le formulaire sur la hauteur disponible.
 // =====================================================================
 
 import type { Metadata } from "next";
+
+import { Container } from "@/components/layout/Container";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+
 import { loginAction } from "./actions";
 
 export const metadata: Metadata = {
@@ -28,50 +35,46 @@ export default function AdminLoginPage({
   const next = searchParams.next ?? "/admin";
 
   return (
-    <main className="min-h-screen flex items-center justify-center bg-slate-50 p-6">
-      <div className="w-full max-w-sm bg-white rounded-2xl shadow-sm border border-slate-200 p-8">
-        <h1 className="text-xl font-semibold text-slate-900 mb-1">
-          Espace admin
-        </h1>
-        <p className="text-sm text-slate-500 mb-6">
-          Acces reserve. Saisis le mot de passe pour continuer.
-        </p>
+    <Container size="prose" className="py-16 sm:py-24">
+      <Card className="max-w-md mx-auto">
+        <CardHeader>
+          <CardTitle>Espace admin</CardTitle>
+          <CardDescription>
+            Acces reserve. Saisis le mot de passe pour continuer.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form action={loginAction} className="space-y-4">
+            <input type="hidden" name="next" value={next} />
 
-        <form action={loginAction} className="space-y-4">
-          <input type="hidden" name="next" value={next} />
+            <div className="space-y-1.5">
+              <Label htmlFor="password">Mot de passe</Label>
+              <Input
+                id="password"
+                type="password"
+                name="password"
+                required
+                autoFocus
+                autoComplete="current-password"
+              />
+            </div>
 
-          <label className="block">
-            <span className="text-sm font-medium text-slate-700">
-              Mot de passe
-            </span>
-            <input
-              type="password"
-              name="password"
-              required
-              autoFocus
-              autoComplete="current-password"
-              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-            />
-          </label>
+            {hasError && (
+              <p
+                className="text-sm text-destructive"
+                role="alert"
+                aria-live="polite"
+              >
+                Mot de passe incorrect.
+              </p>
+            )}
 
-          {hasError && (
-            <p
-              className="text-sm text-red-600"
-              role="alert"
-              aria-live="polite"
-            >
-              Mot de passe incorrect.
-            </p>
-          )}
-
-          <button
-            type="submit"
-            className="w-full rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium py-2.5 transition-colors"
-          >
-            Se connecter
-          </button>
-        </form>
-      </div>
-    </main>
+            <Button type="submit" className="w-full" size="lg">
+              Se connecter
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
+    </Container>
   );
 }

@@ -21,12 +21,12 @@ const stats: { icon: React.ComponentType<{ className?: string }>; label: string;
   {
     icon: Eye,
     value: "70%",
-    label: "des Francais utiliseront une IA pour acheter en 2026",
+    label: "des Français utiliseront une IA pour acheter en 2026",
   },
   {
     icon: AlertTriangle,
     value: "1 sur 3",
-    label: "des marques sont deja recommandees par defaut",
+    label: "des marques sont déjà recommandées par défaut",
   },
 ];
 
@@ -42,10 +42,10 @@ export function WhyUrgent() {
             id="urgent-title"
             className="font-display text-3xl sm:text-4xl font-bold tracking-tight text-ankora-text"
           >
-            Vos clients utilisent deja les IA
+            Vos clients utilisent déjà les IA
           </h2>
           <p className="mt-5 text-base sm:text-lg text-ankora-text-soft leading-relaxed">
-            Les IA conversationnelles transforment la recherche en ligne. Si ChatGPT ne recommande pas votre marque, vous perdez des clients chaque jour sans le savoir. Vos concurrents, eux, sont deja visibles.
+            Les IA conversationnelles transforment la recherche en ligne. Si ChatGPT ne recommande pas votre marque, vous perdez des clients chaque jour sans le savoir. Vos concurrents, eux, sont déjà visibles.
           </p>
         </div>
 

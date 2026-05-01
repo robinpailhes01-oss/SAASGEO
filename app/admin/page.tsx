@@ -33,7 +33,7 @@ export default function AdminHomePage() {
           <Badge variant="warning">En construction</Badge>
         </div>
         <Button asChild variant="outline" size="sm">
-          <Link href="/admin/logout">Se deconnecter</Link>
+          <Link href="/admin/logout">Se déconnecter</Link>
         </Button>
       </div>
 
@@ -54,9 +54,9 @@ export default function AdminHomePage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Leads captures</CardTitle>
+            <CardTitle>Leads capturés</CardTitle>
             <CardDescription>
-              Adresses recoltees sur les rapports
+              Adresses récoltées sur les rapports
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -70,7 +70,7 @@ export default function AdminHomePage() {
           <CardHeader>
             <CardTitle>Budget API</CardTitle>
             <CardDescription>
-              Consomme / cap mensuel
+              Consommé / cap mensuel
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -82,7 +82,7 @@ export default function AdminHomePage() {
       </div>
 
       <p className="mt-10 text-sm text-ankora-text-muted">
-        Le tableau de bord complet (liste audits + emails + stats) sera livre en Phase D / E.
+        Le tableau de bord complet (liste audits + emails + stats) sera livré en Phase D / E.
       </p>
     </Container>
   );

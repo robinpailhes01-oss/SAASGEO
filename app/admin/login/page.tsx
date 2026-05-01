@@ -40,7 +40,7 @@ export default function AdminLoginPage({
         <CardHeader>
           <CardTitle>Espace admin</CardTitle>
           <CardDescription>
-            Acces reserve. Saisis le mot de passe pour continuer.
+            Accès réservé. Saisis le mot de passe pour continuer.
           </CardDescription>
         </CardHeader>
         <CardContent>

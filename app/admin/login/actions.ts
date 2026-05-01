@@ -34,7 +34,7 @@ export async function loginAction(formData: FormData): Promise<void> {
 
   const secret = process.env.ADMIN_SESSION_SECRET;
   if (!secret) {
-    throw new Error("ADMIN_SESSION_SECRET manquant cote serveur.");
+    throw new Error("ADMIN_SESSION_SECRET manquant côté serveur.");
   }
 
   const token = await signSession(secret, COOKIE_TTL_MS);

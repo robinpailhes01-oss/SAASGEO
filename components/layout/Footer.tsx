@@ -16,8 +16,8 @@ import { Container } from "./Container";
 // =====================================================================
 
 const legalLinks: { href: string; label: string }[] = [
-  { href: "/legal/mentions", label: "Mentions legales" },
-  { href: "/legal/confidentialite", label: "Confidentialite" },
+  { href: "/legal/mentions", label: "Mentions légales" },
+  { href: "/legal/confidentialite", label: "Confidentialité" },
   { href: "/legal/cgu", label: "Conditions d'utilisation" },
 ];
 
@@ -33,7 +33,7 @@ export function Footer() {
             <Logo />
             <p className="text-sm text-ankora-text-soft max-w-xs">
               Ancrez votre marque dans les IA conversationnelles.
-              Audit GEO et tracking de visibilite, specialise tourisme et hotellerie.
+              Audit GEO et tracking de visibilité, spécialisé tourisme et hôtellerie.
             </p>
           </div>
 
@@ -71,14 +71,14 @@ export function Footer() {
                 </a>
               </li>
               <li className="text-sm text-ankora-text-soft">
-                Hebergement EU — Frankfurt
+                Hébergement EU — Frankfurt
               </li>
             </ul>
           </div>
         </div>
 
         <div className="border-t border-ankora-border py-6 text-center text-xs text-ankora-text-muted">
-          &copy; {year} Ankora. Tous droits reserves.
+          &copy; {year} Ankora. Tous droits réservés.
         </div>
       </Container>
     </footer>

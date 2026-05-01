@@ -24,21 +24,21 @@ const steps: Step[] = [
     emoji: "\u{1F310}",
     title: "Vous donnez votre URL",
     description:
-      "On analyse votre site et on identifie automatiquement votre activite, vos services et vos concurrents.",
+      "On analyse votre site et on identifie automatiquement votre activité, vos services et vos concurrents.",
   },
   {
     number: "2",
     emoji: "\u{1F916}",
     title: "On interroge 4 IA en votre nom",
     description:
-      "30 questions clients posees a ChatGPT, Claude, Perplexity et Gemini. On capture leurs reponses brutes.",
+      "30 questions clients posées à ChatGPT, Claude, Perplexity et Gemini. On capture leurs réponses brutes.",
   },
   {
     number: "3",
     emoji: "\u{1F4CA}",
     title: "Vous recevez votre rapport choc",
     description:
-      "Score sur 100, concurrents qui vous devancent, plan d'action priorise. Lisible en 2 minutes.",
+      "Score sur 100, concurrents qui vous devancent, plan d'action priorisé. Lisible en 2 minutes.",
   },
 ];
 
@@ -55,10 +55,10 @@ export function HowItWorks() {
             id="comment-title"
             className="font-display text-3xl sm:text-4xl font-bold tracking-tight text-ankora-text"
           >
-            Comment ca marche
+            Comment ça marche
           </h2>
           <p className="mt-4 text-base sm:text-lg text-ankora-text-soft">
-            Trois etapes, cinq minutes, zero friction.
+            Trois étapes, cinq minutes, zéro friction.
           </p>
         </div>
 

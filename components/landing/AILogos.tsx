@@ -34,7 +34,7 @@ export function AILogos({ className }: { className?: string }) {
       </p>
       <ul
         className="grid grid-cols-2 gap-x-10 gap-y-6 sm:grid-cols-4 sm:gap-x-12"
-        aria-label="IA interrogees par Ankora"
+        aria-label="IA interrogées par Ankora"
       >
         {brands.map((brand) => (
           <li

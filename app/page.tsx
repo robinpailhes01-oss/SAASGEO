@@ -26,9 +26,9 @@ import { WhyUrgent } from "@/components/landing/WhyUrgent";
 import { AnimatedSection } from "@/components/landing/AnimatedSection";
 
 const SITE_TITLE =
-  "Ankora — Audit gratuit de votre visibilite sur ChatGPT, Claude, Perplexity, Gemini";
+  "Ankora — Audit gratuit de votre visibilité sur ChatGPT, Claude, Perplexity, Gemini";
 const SITE_DESCRIPTION =
-  "Decouvrez en 5 minutes si votre marque est citee par les IA conversationnelles. Audit gratuit, sans inscription.";
+  "Découvrez en 5 minutes si votre marque est citée par les IA conversationnelles. Audit gratuit, sans inscription.";
 
 export const metadata: Metadata = {
   title: SITE_TITLE,
@@ -106,12 +106,12 @@ export default function HomePage() {
                 <span className="text-ankora-gradient">ChatGPT</span>
                 <span className="text-ankora-ink">
                   {" "}
-                  recommande votre marque a vos clients ?
+                  recommande votre marque à vos clients ?
                 </span>
               </h1>
 
               <p className="mt-6 sm:mt-8 mx-auto max-w-2xl text-base sm:text-lg md:text-xl text-ankora-text-soft leading-relaxed">
-                Decouvrez en 5 minutes votre score de visibilite sur ChatGPT, Claude, Perplexity et Gemini. Gratuit, sans inscription.
+                Découvrez en 5 minutes votre score de visibilité sur ChatGPT, Claude, Perplexity et Gemini. Gratuit, sans inscription.
               </p>
 
               <div className="mt-10 sm:mt-12">
@@ -137,10 +137,10 @@ export default function HomePage() {
                 id="cta-final-title"
                 className="font-display text-3xl sm:text-4xl font-bold tracking-tight text-ankora-text"
               >
-                Pret a savoir ce que les IA disent de vous ?
+                Prêt à savoir ce que les IA disent de vous ?
               </h2>
               <p className="mt-4 text-base sm:text-lg text-ankora-text-soft">
-                Cinq minutes, zero inscription, un rapport tout de suite.
+                Cinq minutes, zéro inscription, un rapport tout de suite.
               </p>
               <div className="mt-8">
                 <HeroAuditForm />

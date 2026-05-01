@@ -81,7 +81,7 @@ export async function POST(req: NextRequest) {
     getClientIp(req)
   );
   if (!captcha.ok) {
-    return err(400, "captcha_required", "Verification anti-robot requise.", {
+    return err(400, "captcha_required", "Vérification anti-robot requise.", {
       reason: captcha.reason,
     });
   }
@@ -122,7 +122,7 @@ export async function POST(req: NextRequest) {
       geo_target: normalizedGeoTarget,
     });
   } catch (e) {
-    return err(500, "server_error", "Impossible de creer l'audit.", {
+    return err(500, "server_error", "Impossible de créer l'audit.", {
       details: e instanceof Error ? e.message : String(e),
     });
   }

@@ -31,7 +31,7 @@ export function Header({ variant = "default" }: HeaderProps) {
           {variant === "default" && (
             <div className="flex items-center gap-2">
               <Button asChild variant="ghost" size="sm" className="hidden sm:inline-flex">
-                <Link href="#comment">Comment ca marche</Link>
+                <Link href="#comment">Comment ça marche</Link>
               </Button>
               <Button asChild variant="gradient" size="sm">
                 <Link href="/#audit">Auditer mon site</Link>

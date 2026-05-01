@@ -30,18 +30,18 @@ type ApiError = { error: string; code?: string; reason?: string };
 
 const ERROR_MESSAGES: Record<string, string> = {
   rate_limited:
-    "Vous avez deja lance plusieurs audits recemment. Reessayez dans 1 heure.",
+    "Vous avez déjà lancé plusieurs audits récemment. Réessayez dans 1 heure.",
   budget_exceeded:
-    "Le quota mensuel de la plateforme est atteint. Reessayez demain.",
-  captcha_required: "Verification anti-robot requise. Rechargez la page.",
-  server_error: "Une erreur est survenue. Reessayez ou contactez-nous.",
+    "Le quota mensuel de la plateforme est atteint. Réessayez demain.",
+  captcha_required: "Vérification anti-robot requise. Rechargez la page.",
+  server_error: "Une erreur est survenue. Réessayez ou contactez-nous.",
 };
 
 function pickErrorMessage(payload: ApiError): string {
   if (payload.code && ERROR_MESSAGES[payload.code]) {
     return ERROR_MESSAGES[payload.code];
   }
-  return payload.error ?? "Une erreur est survenue. Reessayez.";
+  return payload.error ?? "Une erreur est survenue. Réessayez.";
 }
 
 export function HeroAuditForm({ className }: { className?: string }) {
@@ -68,7 +68,7 @@ export function HeroAuditForm({ className }: { className?: string }) {
       toast.error("URL invalide", {
         description:
           (validation && !validation.ok && validation.message) ||
-          "Verifie le format (ex: https://votre-site.fr).",
+          "Vérifie le format (ex: https://votre-site.fr).",
       });
       return;
     }
@@ -87,7 +87,7 @@ export function HeroAuditForm({ className }: { className?: string }) {
 
       if (!res.ok) {
         const msg = pickErrorMessage(data as ApiError);
-        toast.error("Audit non lance", { description: msg });
+        toast.error("Audit non lancé", { description: msg });
         setSubmitting(false);
         return;
       }
@@ -97,7 +97,7 @@ export function HeroAuditForm({ className }: { className?: string }) {
       router.push(`/audit/${audit_id}/progress`);
     } catch {
       toast.error("Connexion impossible", {
-        description: "Verifie ton acces internet et reessaie.",
+        description: "Vérifie ton accès internet et réessaie.",
       });
       setSubmitting(false);
     }
@@ -135,7 +135,7 @@ export function HeroAuditForm({ className }: { className?: string }) {
           {submitting ? (
             <>
               <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />
-              Lancement...
+              Lancement…
             </>
           ) : (
             <>

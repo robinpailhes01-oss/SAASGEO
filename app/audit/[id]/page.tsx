@@ -1,0 +1,159 @@
+// =====================================================================
+// /audit/[id] — page rapport publique (Phase D).
+//
+// Server Component qui :
+//   - valide l'UUID
+//   - fetch le rapport agreges via lib/report/get-report
+//   - 404 si l'audit n'existe pas
+//   - redirect vers /progress si l'audit n'est pas encore termine
+//   - affiche un message de panne clair si status === "failed"
+//   - rend le rapport complet sinon
+//
+// SEO : meta noindex stricte (rapports prives) + OpenGraph dynamique
+// pour partage interne (lien Slack, email...).
+//
+// La page est volontairement decoupee en blocs Phase D.1 -> D.4 :
+//   D.1 : ScoreHero, Verdict, LostOpportunities  (en place)
+//   D.2 : TopCompetitors, AIResponsePreview      (a venir)
+//   D.3 : WhyInvisible, PriorityActions, Urgency (a venir)
+//   D.4 : MainCta, ChallengeCompetitor, EmailCapture (a venir)
+// =====================================================================
+
+import type { Metadata } from "next";
+import Link from "next/link";
+import { notFound, redirect } from "next/navigation";
+
+import { getReport } from "@/lib/report/get-report";
+import { ReportLayout } from "@/components/report/ReportLayout";
+import { ScoreHero } from "@/components/report/ScoreHero";
+import { Verdict } from "@/components/report/Verdict";
+import { LostOpportunities } from "@/components/report/LostOpportunities";
+import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+
+// Forcer le rendu dynamique : pas de cache, on lit la donnee a chaque hit
+export const dynamic = "force-dynamic";
+
+// ---------------------------------------------------------------------
+// Meta SEO dynamique : titre + OG image avec score (image OG generee
+// statiquement en Phase E, placeholder ici).
+// ---------------------------------------------------------------------
+export async function generateMetadata({
+  params,
+}: {
+  params: { id: string };
+}): Promise<Metadata> {
+  const report = await getReport(params.id);
+  if (!report) {
+    return {
+      title: "Rapport introuvable — Ankora",
+      robots: { index: false, follow: false },
+    };
+  }
+  const score =
+    report.status === "done" ? Math.round(report.global_score) : null;
+  const title = score
+    ? `Audit Ankora pour ${report.hostname} : ${score}/100`
+    : `Audit en cours pour ${report.hostname} — Ankora`;
+  return {
+    title,
+    description:
+      "Votre rapport de visibilité dans les IA conversationnelles (ChatGPT, Claude, Perplexity, Gemini).",
+    robots: { index: false, follow: false },
+    openGraph: {
+      title,
+      description:
+        "Découvrez si votre marque est citée par les IA conversationnelles.",
+      type: "article",
+    },
+  };
+}
+
+// ---------------------------------------------------------------------
+// Sous-vue : audit en echec (status=failed)
+// ---------------------------------------------------------------------
+function FailedReportView({ hostname }: { hostname: string }) {
+  return (
+    <ReportLayout>
+      <div className="text-center">
+        <p className="text-xs font-medium uppercase tracking-[0.2em] text-ankora-text-muted">
+          Audit interrompu
+        </p>
+        <h1 className="mt-4 font-display text-3xl sm:text-4xl font-bold text-ankora-text">
+          Quelque chose s&apos;est mal passé pour {hostname}
+        </h1>
+      </div>
+
+      <Card className="border-destructive/30">
+        <CardContent className="pt-6 pb-6 space-y-4 text-center">
+          <p className="text-base text-ankora-text-soft">
+            L&apos;audit n&apos;a pas pu aboutir. C&apos;est rare et de notre
+            côté — relancez-le ou écrivez-nous, on vous répond vite.
+          </p>
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+            <Button asChild variant="gradient" size="lg">
+              <Link href="/">Réessayer un audit</Link>
+            </Button>
+            <Button asChild variant="outline" size="lg">
+              <a href="mailto:contact@robinpailhes.fr">Nous contacter</a>
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    </ReportLayout>
+  );
+}
+
+// ---------------------------------------------------------------------
+// Page principale
+// ---------------------------------------------------------------------
+export default async function AuditReportPage({
+  params,
+}: {
+  params: { id: string };
+}) {
+  const report = await getReport(params.id);
+  if (!report) notFound();
+
+  // Routing par status
+  if (report.status === "failed") {
+    return <FailedReportView hostname={report.hostname} />;
+  }
+
+  // Statuts intermediaires : redirection automatique vers la page de
+  // progression — c'est sa responsabilite d'attendre que l'audit
+  // termine puis de revenir ici via auto-redirect.
+  if (report.status !== "done") {
+    redirect(`/audit/${params.id}/progress`);
+  }
+
+  // ---- Status === "done" : on rend le rapport ----
+  return (
+    <ReportLayout>
+      {/* Bloc 1 — Score géant + sous-scores par IA */}
+      <ScoreHero
+        globalScore={report.global_score}
+        perProvider={report.per_provider}
+      />
+
+      {/* Bloc 2 — Verdict en 1 phrase */}
+      <Verdict
+        brandName={report.brand_name}
+        globalScore={report.global_score}
+        mentionRate={report.mention_rate}
+        topCompetitor={report.top_competitor}
+        totalQueries={report.total_queries}
+        brandMentionsCount={report.brand_mentions_count}
+      />
+
+      {/* Bloc 3 — Perte chiffrée */}
+      <LostOpportunities
+        globalScore={report.global_score}
+        totalQueries={report.total_queries}
+        brandMentionsCount={report.brand_mentions_count}
+      />
+
+      {/* Blocs D.2 -> D.4 a venir */}
+    </ReportLayout>
+  );
+}

@@ -17,6 +17,20 @@
 // On NE peut pas decouper en step.parallel par provider car les 4
 // providers utilisent les memes queries (4*30 = 120 step.run serait
 // disproportionne pour Inngest qui facture par execution).
+//
+// REGLE D'OR INNGEST :
+//   Inngest replay la fonction entiere a chaque step boundary. Tout
+//   code hors step.run() RE-EXECUTE a chaque replay, y compris le
+//   replay final apres que le dernier step ait resolu.
+//   -> Les writes en DB DOIVENT etre dans step.run() sinon ils
+//      ecrasent les ecritures faites par les steps suivants. Bug
+//      reproduit en prod sur audit 95c2353d-... ou la status restait
+//      a "querying/55" alors que finalize avait deja ecrit "done/100",
+//      parce qu'un updateAuditStatus en dehors de step.run() etait
+//      execute une derniere fois sur le replay final.
+//   -> Les reads peuvent rester hors step.run() si le cout est nul,
+//      mais on les wrap quand meme par precaution (ex: alertes
+//      budget qui pourraient etre dupliquees a chaque replay).
 // =====================================================================
 
 import { inngest } from "../client";
@@ -62,8 +76,11 @@ export const runAuditFunction = inngest.createFunction(
     const { audit_id, url, geo_target } = event.data;
 
     try {
-      // Budget check (pas dans un step.run car non-coute, juste lecture)
-      const budgetBefore = await ensureBudgetAvailable();
+      // Budget check : wrap dans step.run() pour ne tourner qu'une fois
+      // (evite N+1 reads sur les replays).
+      const budgetBefore = await step.run("budget-check", () =>
+        ensureBudgetAvailable()
+      );
 
       // -------- Step 1 : Tech audit --------
       const technical = await step.run("tech-audit", () =>
@@ -85,19 +102,20 @@ export const runAuditFunction = inngest.createFunction(
       // Si Anthropic crash, OpenAI / Perplexity / Gemini deja checkpointed.
       //
       // Note serialisation Inngest : `query_id_map` est un Record<string,
-      // string> (plain object) — directement JSON-serialisable. C'etait
-      // un Map JS avant, ce qui causait "TypeError: ...entries is not a
-      // function" car JSON.stringify d'un Map donne "{}". Cf.
+      // string> (plain object) — directement JSON-serialisable. Cf.
       // lib/ai/query-id-map.ts pour le contrat et le helper defensif.
       const queryIdMap = queriesResult.query_id_map;
 
-      // Update status avant le fan-out
-      await updateAuditStatus({
-        audit_id,
-        status: "querying",
-        progress: 55,
-        current_step: "Visibility tracking — fan-out 4 IA en parallele",
-      });
+      // Update status avant le fan-out — DOIT etre dans step.run() sinon
+      // re-execute a chaque replay et ecrase le done/100 final.
+      await step.run("update-status-fanout", () =>
+        updateAuditStatus({
+          audit_id,
+          status: "querying",
+          progress: 55,
+          current_step: "Visibility tracking — fan-out 4 IA en parallele",
+        })
+      );
 
       const providers: AIProvider[] = ["openai", "anthropic", "perplexity", "gemini"];
       const responsesPerProvider = await Promise.all(
@@ -161,18 +179,26 @@ export const runAuditFunction = inngest.createFunction(
         })
       );
 
-      // Post-audit : alertes budget (hors step.run, lecture seule)
-      const budgetAfter = await getMonthToDateSpend();
-      await checkAndAlertThresholds({
-        total_before_eur: budgetBefore.current_total_eur,
-        total_after_eur: budgetAfter,
+      // Post-audit : alertes budget. Wrap dans step.run() pour que
+      // l'envoi d'alerte ne soit declenche QU'UNE seule fois (eviter
+      // les alertes dupliquees si Inngest replay la fonction).
+      await step.run("budget-alerts", async () => {
+        const budgetAfter = await getMonthToDateSpend();
+        await checkAndAlertThresholds({
+          total_before_eur: budgetBefore.current_total_eur,
+          total_after_eur: budgetAfter,
+        });
+        return { budgetAfter };
       });
 
+      // Le retour de la fonction est juste un payload de log Inngest —
+      // les valeurs precises ne sont pas critiques (cost_eur etc.). On
+      // ne les recalcule pas ici pour eviter de tirer un autre read DB
+      // hors step.run().
       return {
         success: true,
         audit_id,
         global_score: scores.global_score,
-        cost_eur: budgetAfter - budgetBefore.current_total_eur,
         recommendations_count: synthesis.recommendations?.length ?? 0,
       };
     } catch (e) {

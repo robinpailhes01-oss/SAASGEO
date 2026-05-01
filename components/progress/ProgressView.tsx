@@ -1,10 +1,12 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 
 import { createClient } from "@/lib/supabase/client";
 import { Container } from "@/components/layout/Container";
+import { Button } from "@/components/ui/button";
 
 import { ProgressHeader } from "./ProgressHeader";
 import { StepsList } from "./StepsList";
@@ -26,13 +28,20 @@ import type { AuditStatusResponse } from "@/app/api/audits/[id]/status/route";
 // reçue est identique à la précédente (économie d'animation pour rien).
 //
 // États terminaux :
-//   - status === "done"   -> remplace les étapes par <AuditDoneCta />
-//   - status === "failed" -> remplace par <AuditFailedState />
-//   - timeout 10 min      -> message d'attente prolongée (audit continue)
+//   - status === "done" OU progress >= 100  -> <AuditDoneCta />
+//     (la condition `progress >= 100` est un filet de securite : si
+//     un bug backend laisse le status a "querying" mais que le
+//     pipeline a bien termine, on debloque quand meme l'utilisateur
+//     plutot que de le laisser pour toujours sur la page progression)
+//   - status === "failed" -> <AuditFailedState />
+//   - bouton secours apres 6 min : redirige manuellement vers le
+//     rapport (la page rapport bouncera back ici si le pipeline
+//     n'est pas vraiment fini, donc pas de risque utilisateur)
 // =====================================================================
 
 const POLL_MS = 3_000;
 const TIMEOUT_MS = 10 * 60 * 1_000;
+const SAFETY_BUTTON_MS = 6 * 60 * 1_000;
 
 type ProgressViewProps = {
   initialAudit: AuditStatusResponse;
@@ -50,6 +59,7 @@ function prettyDomain(url: string): string {
 export function ProgressView({ initialAudit }: ProgressViewProps) {
   const [audit, setAudit] = React.useState<AuditStatusResponse>(initialAudit);
   const [showTimeoutNote, setShowTimeoutNote] = React.useState(false);
+  const [showSafetyButton, setShowSafetyButton] = React.useState(false);
   const lastSerializedRef = React.useRef<string>(JSON.stringify(initialAudit));
 
   // Helper : ne déclenche un setState que si quelque chose a réellement changé
@@ -60,8 +70,12 @@ export function ProgressView({ initialAudit }: ProgressViewProps) {
     setAudit(next);
   }, []);
 
-  const isTerminal =
-    audit.status === "done" || audit.status === "failed";
+  // Conditions terminales — relaxees pour absorber un eventuel bug
+  // backend ou Inngest replay qui laisserait progress=100 sans
+  // status='done'.
+  const isFailed = audit.status === "failed";
+  const isDone = audit.status === "done" || audit.progress >= 100;
+  const isTerminal = isDone || isFailed;
 
   // ---- Polling REST (fallback toujours actif jusqu'au terminal) ----
   React.useEffect(() => {
@@ -124,22 +138,40 @@ export function ProgressView({ initialAudit }: ProgressViewProps) {
   }, [audit.id, isTerminal]);
 
   // ---- Timeout 10 min : on n'arrête pas l'attente, on rassure ----
+  // ---- Bouton secours 6 min : permet de forcer la redirection ----
   React.useEffect(() => {
     if (isTerminal) return;
     const startedAtMs = new Date(audit.created_at).getTime();
     const elapsed = Date.now() - startedAtMs;
-    const remaining = TIMEOUT_MS - elapsed;
-    if (remaining <= 0) {
+
+    // Note d'attente prolongee (10 min)
+    const remainingNote = TIMEOUT_MS - elapsed;
+    let noteTimer: number | null = null;
+    if (remainingNote <= 0) {
       setShowTimeoutNote(true);
-      return;
+    } else {
+      noteTimer = window.setTimeout(() => setShowTimeoutNote(true), remainingNote);
     }
-    const id = window.setTimeout(() => setShowTimeoutNote(true), remaining);
-    return () => window.clearTimeout(id);
+
+    // Bouton secours (6 min) — discret mais permet de partir si bug
+    const remainingSafety = SAFETY_BUTTON_MS - elapsed;
+    let safetyTimer: number | null = null;
+    if (remainingSafety <= 0) {
+      setShowSafetyButton(true);
+    } else {
+      safetyTimer = window.setTimeout(
+        () => setShowSafetyButton(true),
+        remainingSafety
+      );
+    }
+
+    return () => {
+      if (noteTimer !== null) window.clearTimeout(noteTimer);
+      if (safetyTimer !== null) window.clearTimeout(safetyTimer);
+    };
   }, [audit.created_at, isTerminal]);
 
   const domain = prettyDomain(audit.url);
-  const isFailed = audit.status === "failed";
-  const isDone = audit.status === "done";
 
   return (
     <main className="min-h-screen bg-background py-8 sm:py-12">
@@ -167,6 +199,26 @@ export function ProgressView({ initialAudit }: ProgressViewProps) {
                 ouvert.
               </div>
             )}
+
+            {/* Bouton secours apres 6 min : permet de partir manuellement
+                vers le rapport. Si le pipeline n'est pas vraiment fini,
+                la page rapport (server component) detectera status !== 'done'
+                et redirigera automatiquement ici. Donc pas de risque. */}
+            {showSafetyButton && (
+              <div
+                className="flex flex-col items-center gap-3 rounded-2xl border border-ankora-border bg-secondary/40 p-4 text-center"
+                role="status"
+              >
+                <p className="text-sm text-ankora-text-soft">
+                  Si la page ne se met pas à jour, vous pouvez essayer
+                  d&apos;ouvrir directement votre rapport.
+                </p>
+                <Button asChild variant="outline" size="sm">
+                  <Link href={`/audit/${audit.id}`}>Voir mon rapport</Link>
+                </Button>
+              </div>
+            )}
+
             <EngagementTip />
             <StepsList progress={audit.progress} />
           </>

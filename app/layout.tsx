@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import { GeistSans } from "geist/font/sans";
+import { Toaster } from "@/components/ui/sonner";
 import "./globals.css";
 
 // Typographies validees phase 0
@@ -40,6 +41,7 @@ export default function RootLayout({
     >
       <body className="font-sans antialiased min-h-screen bg-background">
         {children}
+        <Toaster />
       </body>
     </html>
   );

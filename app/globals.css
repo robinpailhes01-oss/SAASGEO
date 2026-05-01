@@ -40,9 +40,17 @@
     --accent: 245 46% 94%;
     --accent-foreground: 245 56% 20%;
 
-    /* Destructive — erreurs */
-    --destructive: 0 72% 51%;
+    /* Destructive — erreurs (#EF4444) */
+    --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
+
+    /* Succes — vert valide (#10B981) */
+    --success: 160 84% 39%;
+    --success-foreground: 0 0% 100%;
+
+    /* Warning — orange alerte (#F59E0B) */
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 100%;
 
     /* Borders et inputs */
     --border: 244 36% 93%;                /* #E8E7F4 */

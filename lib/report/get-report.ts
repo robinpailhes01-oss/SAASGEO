@@ -19,12 +19,27 @@ import {
   PROVIDER_COLORS,
   PROVIDER_LABELS,
   PROVIDER_ORDER,
+  normalizeCompetitorKey,
+  type AIProvider,
+  type AIResponseSample,
+  type CompetitorRanking,
   type ProviderScore,
+  type QueryCategory,
   type ReportData,
 } from "./types";
 
-export type { ReportData, ProviderScore } from "./types";
-export { scoreTone, PROVIDER_LABELS, PROVIDER_COLORS, PROVIDER_ORDER } from "./types";
+export type {
+  AIResponseSample,
+  CompetitorRanking,
+  ProviderScore,
+  ReportData,
+} from "./types";
+export {
+  scoreTone,
+  PROVIDER_LABELS,
+  PROVIDER_COLORS,
+  PROVIDER_ORDER,
+} from "./types";
 
 function prettyHostname(url: string): string {
   try {
@@ -104,26 +119,227 @@ export async function getReport(auditId: string): Promise<ReportData | null> {
   const queryIds = (queriesRes.data ?? []).map((q) => q.id);
   const total_queries = queryIds.length;
 
-  // Etape 2 : analyses sur les ai_responses liees a ces queries.
-  // On split en deux passes (responses puis analyses) pour eviter une
-  // jointure imbriquee qui complique les types PostgREST.
+  // Etape 2 : ai_responses + ai_response_analysis pour les 30 queries.
+  // On fetch aussi le texte des queries (text + category) pour les
+  // apercus IA. Trois requetes parallelisees.
   let total_responses = 0;
   let brand_mentions_count = 0;
+  let top_competitors: CompetitorRanking[] = [];
+  let your_mentions_count = 0;
+  let samples: AIResponseSample[] = [];
+
   if (queryIds.length > 0) {
-    const { data: responses } = await sb
-      .from("ai_responses")
-      .select("id")
-      .in("query_id", queryIds);
-    const responseIds = (responses ?? []).map((r) => r.id);
-    if (responseIds.length > 0) {
-      const { data: analyses } = await sb
-        .from("ai_response_analysis")
-        .select("brand_mentioned")
-        .in("response_id", responseIds);
-      const rows = analyses ?? [];
-      total_responses = rows.length;
-      brand_mentions_count = rows.filter((a) => a.brand_mentioned).length;
+    const [queriesFullRes, responsesRes] = await Promise.all([
+      sb
+        .from("queries")
+        .select("id, text, category, position")
+        .in("id", queryIds),
+      sb
+        .from("ai_responses")
+        .select("id, provider, query_id, raw_response, error_message")
+        .in("query_id", queryIds),
+    ]);
+
+    const queriesById = new Map<
+      string,
+      { id: string; text: string; category: QueryCategory; position: number }
+    >();
+    for (const q of queriesFullRes.data ?? []) {
+      queriesById.set(q.id, q);
     }
+
+    const responses = responsesRes.data ?? [];
+    const responseIds = responses.map((r) => r.id);
+    const responsesById = new Map(responses.map((r) => [r.id, r]));
+
+    let analyses: Array<{
+      response_id: string;
+      brand_mentioned: boolean | null;
+      competitors_cited: string[] | null;
+      mention_position: number | null;
+    }> = [];
+    if (responseIds.length > 0) {
+      const { data } = await sb
+        .from("ai_response_analysis")
+        .select(
+          "response_id, brand_mentioned, competitors_cited, mention_position"
+        )
+        .in("response_id", responseIds);
+      analyses = data ?? [];
+    }
+    total_responses = analyses.length;
+    brand_mentions_count = analyses.filter((a) => a.brand_mentioned).length;
+
+    // ----- Agregation top 3 concurrents -----
+    // On compte chaque competitor cite, en groupant par cle normalisee
+    // (Stripe / stripe / stripe.com -> meme cle "stripe"). On garde la
+    // premiere graphie rencontree comme nom canonique.
+    const competitorAgg = new Map<
+      string,
+      { displayName: string; count: number }
+    >();
+    for (const a of analyses) {
+      const cited = a.competitors_cited ?? [];
+      for (const raw of cited) {
+        if (!raw || typeof raw !== "string") continue;
+        const key = normalizeCompetitorKey(raw);
+        if (!key) continue;
+        const existing = competitorAgg.get(key);
+        if (existing) {
+          existing.count += 1;
+        } else {
+          competitorAgg.set(key, { displayName: raw.trim(), count: 1 });
+        }
+      }
+    }
+    top_competitors = [...competitorAgg.values()]
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 3)
+      .map((c) => ({
+        name: c.displayName,
+        mentions: c.count,
+        pct_of_queries:
+          total_queries > 0
+            ? Math.round((c.count / (total_queries * 4)) * 100)
+            : 0,
+      }));
+
+    // ----- Mentions de la marque (par query, pas par reponse) -----
+    // Une query "compte" si au moins une des 4 IA cite la marque.
+    const queriesWithBrand = new Set<string>();
+    for (const a of analyses) {
+      if (!a.brand_mentioned) continue;
+      const resp = responsesById.get(a.response_id);
+      if (resp) queriesWithBrand.add(resp.query_id);
+    }
+    your_mentions_count = queriesWithBrand.size;
+
+    // ----- Selection des apercus IA (Phase D.2 - bloc 5) -----
+    // Strategie :
+    //   1. Filtre : analyses ou la marque n'est PAS citee ET au moins
+    //      un competitor du top 3 est cite (sinon aucun competitor cite
+    //      du tout).
+    //   2. Tri par : (a) query.category=comparative > service > branded,
+    //      (b) provider=openai (ChatGPT) en priorite,
+    //      (c) presence d'un competitor top 3 (priorite forte).
+    //   3. On prend max 2 apercus, idealement 2 providers differents.
+    //   4. Si rien trouve : on prend une reponse au hasard avec un
+    //      competitor cite, ou une simple reponse ChatGPT.
+    //   5. Si toutes les reponses contiennent la marque : on inverse,
+    //      on montre 2 reponses ou la marque APPARAIT bien.
+    const top3Keys = new Set(
+      top_competitors.map((c) => normalizeCompetitorKey(c.name))
+    );
+    const allBrandMentioned =
+      analyses.length > 0 && analyses.every((a) => a.brand_mentioned);
+
+    const candidates = analyses
+      .map((a) => {
+        const resp = responsesById.get(a.response_id);
+        if (!resp || !resp.raw_response) return null;
+        const q = queriesById.get(resp.query_id);
+        if (!q) return null;
+        const competitorsCanonical = (a.competitors_cited ?? []).filter(
+          (c) => typeof c === "string" && c.trim().length > 0
+        );
+        const hasTop3 = competitorsCanonical.some((c) =>
+          top3Keys.has(normalizeCompetitorKey(c))
+        );
+        return {
+          analysis: a,
+          response: resp,
+          query: q,
+          competitors: competitorsCanonical,
+          hasTop3,
+        };
+      })
+      .filter((x): x is NonNullable<typeof x> => x !== null);
+
+    const categoryRank: Record<QueryCategory, number> = {
+      comparative: 0,
+      service: 1,
+      branded: 2,
+    };
+    const sortCandidates = (
+      list: typeof candidates,
+      preferTop3: boolean
+    ): typeof candidates =>
+      [...list].sort((x, y) => {
+        if (preferTop3 && x.hasTop3 !== y.hasTop3) return x.hasTop3 ? -1 : 1;
+        const cx = categoryRank[x.query.category];
+        const cy = categoryRank[y.query.category];
+        if (cx !== cy) return cx - cy;
+        const px = x.response.provider === "openai" ? 0 : 1;
+        const py = y.response.provider === "openai" ? 0 : 1;
+        if (px !== py) return px - py;
+        return x.query.position - y.query.position;
+      });
+
+    const pickSamples = (list: typeof candidates): typeof candidates => {
+      const picked: typeof candidates = [];
+      const seenProviders = new Set<AIProvider>();
+      for (const c of list) {
+        if (picked.length >= 2) break;
+        // Diversifie les providers entre les 2 picks
+        if (
+          picked.length === 1 &&
+          seenProviders.has(c.response.provider) &&
+          // Si on n'a pas encore essaye, on cherche un provider different
+          list.some((x) => !seenProviders.has(x.response.provider))
+        ) {
+          continue;
+        }
+        picked.push(c);
+        seenProviders.add(c.response.provider);
+      }
+      return picked;
+    };
+
+    let chosen: typeof candidates = [];
+    if (allBrandMentioned) {
+      // Cas optimiste : toutes citent la marque -> on montre 2 reponses
+      // ou la marque apparait (positionnement reverse de l'intention).
+      const positives = candidates.filter((c) => c.analysis.brand_mentioned);
+      chosen = pickSamples(sortCandidates(positives, false));
+    } else {
+      const negatives = candidates.filter((c) => !c.analysis.brand_mentioned);
+      // 1ere passe : invisibles + competitor top 3 cite
+      const withTop3 = negatives.filter((c) => c.hasTop3);
+      const sorted = sortCandidates(
+        withTop3.length > 0 ? withTop3 : negatives,
+        true
+      );
+      chosen = pickSamples(sorted);
+      // Filet de securite : si vraiment rien (pas d'analyses utilisables)
+      if (chosen.length === 0) {
+        chosen = pickSamples(sortCandidates(candidates, false));
+      }
+    }
+
+    samples = chosen.map((c) => {
+      const full = (c.response.raw_response ?? "").trim();
+      // Tronque a 250 chars sans couper un mot, ajoute "..." si tronque.
+      let preview = full;
+      if (full.length > 250) {
+        const slice = full.slice(0, 250);
+        const lastSpace = slice.lastIndexOf(" ");
+        preview =
+          (lastSpace > 200 ? slice.slice(0, lastSpace) : slice).trimEnd() +
+          "...";
+      }
+      return {
+        id: c.response.id,
+        provider: c.response.provider,
+        provider_label: PROVIDER_LABELS[c.response.provider],
+        provider_color: PROVIDER_COLORS[c.response.provider],
+        query_text: c.query.text,
+        query_category: c.query.category,
+        response_preview: preview,
+        response_full: full,
+        brand_mentioned: c.analysis.brand_mentioned ?? false,
+        competitors_cited: c.competitors,
+      };
+    });
   }
 
   return {
@@ -150,5 +366,8 @@ export async function getReport(auditId: string): Promise<ReportData | null> {
     total_queries,
     total_responses,
     brand_mentions_count,
+    top_competitors,
+    your_mentions_count,
+    samples,
   };
 }

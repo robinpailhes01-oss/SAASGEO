@@ -28,6 +28,8 @@ import { ReportLayout } from "@/components/report/ReportLayout";
 import { ScoreHero } from "@/components/report/ScoreHero";
 import { Verdict } from "@/components/report/Verdict";
 import { LostOpportunities } from "@/components/report/LostOpportunities";
+import { TopCompetitors } from "@/components/report/TopCompetitors";
+import { AIResponsePreview } from "@/components/report/AIResponsePreview";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 
@@ -153,7 +155,21 @@ export default async function AuditReportPage({
         brandMentionsCount={report.brand_mentions_count}
       />
 
-      {/* Blocs D.2 -> D.4 a venir */}
+      {/* Bloc 4 — Top 3 concurrents (podium + VOUS) */}
+      <TopCompetitors
+        competitors={report.top_competitors}
+        brandName={report.brand_name}
+        yourMentions={report.your_mentions_count}
+        totalQueries={report.total_queries}
+      />
+
+      {/* Bloc 5 — Aperçu en direct d'une réponse IA (le wow ultime) */}
+      <AIResponsePreview
+        samples={report.samples}
+        brandName={report.brand_name}
+      />
+
+      {/* Blocs D.3 -> D.4 a venir */}
     </ReportLayout>
   );
 }

@@ -73,6 +73,11 @@ export type ReportData = {
   total_queries: number;
   total_responses: number;
   brand_mentions_count: number;
+
+  // -- Phase D.2 : top 3 concurrents + apercus IA --
+  top_competitors: CompetitorRanking[]; // 0..3 entrees
+  your_mentions_count: number; // queries (sur total) ou la marque apparait au moins 1 fois
+  samples: AIResponseSample[]; // 0..2 apercus
 };
 
 // Helper UI : retourne le ton selon le score (rouge/orange/vert).
@@ -81,4 +86,42 @@ export function scoreTone(score: number): ScoreTone {
   if (score < 40) return "low";
   if (score < 70) return "medium";
   return "high";
+}
+
+// =====================================================================
+// Phase D.2 — Top 3 concurrents + apercus de reponses IA
+// =====================================================================
+
+export type QueryCategory = Database["public"]["Enums"]["query_category"];
+
+// Une entree du podium concurrents
+export type CompetitorRanking = {
+  name: string; // nom canonique pour l'affichage (ex: "Stripe")
+  mentions: number; // nombre total d'analyses qui le citent
+  pct_of_queries: number; // % sur le total de queries (0-100)
+};
+
+// Un apercu de reponse IA pour le bloc 5
+export type AIResponseSample = {
+  id: string; // ai_responses.id
+  provider: AIProvider;
+  provider_label: string; // "ChatGPT" / "Claude" / etc.
+  provider_color: string;
+  query_text: string;
+  query_category: QueryCategory;
+  response_preview: string; // tronque a ~250 chars (avec ellipsis si tronque)
+  response_full: string; // texte integral pour le Dialog
+  brand_mentioned: boolean;
+  competitors_cited: string[]; // noms canoniques presents dans la reponse
+};
+
+// Normalise un nom de concurrent pour l'agregation par cle.
+// Lowercase + trim + retire prefixes URL et suffixes de domaine courants.
+export function normalizeCompetitorKey(name: string): string {
+  return name
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//, "")
+    .replace(/^www\./, "")
+    .replace(/\.(com|fr|io|co|app|ai|net|org)$/, "");
 }

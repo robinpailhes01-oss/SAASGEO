@@ -105,9 +105,18 @@ export default function HomePage() {
 
           <Container>
             <div className="mx-auto max-w-4xl text-center">
+              {/* Eyebrow tagline : positionne le service en moins d'1 seconde
+                  (style premium SaaS — font-mono Ankora + uppercase) */}
+              <p className="font-mono text-[10px] sm:text-xs font-semibold uppercase tracking-[0.18em] text-ankora-text-muted">
+                Audit GEO <span aria-hidden="true">·</span> ChatGPT{" "}
+                <span aria-hidden="true">·</span> Claude{" "}
+                <span aria-hidden="true">·</span> Perplexity{" "}
+                <span aria-hidden="true">·</span> Gemini
+              </p>
+
               <h1
                 id="hero-title"
-                className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold leading-[1.05] tracking-tight"
+                className="mt-4 sm:mt-5 text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold leading-[1.05] tracking-tight"
               >
                 <span className="text-ankora-ink">Combien de fois </span>
                 <span className="text-ankora-gradient">ChatGPT</span>

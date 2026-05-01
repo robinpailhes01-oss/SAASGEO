@@ -146,12 +146,14 @@ export function HeroMockup({ className }: HeroMockupProps) {
         </div>
       </motion.div>
 
-      {/* ---------- Card flottante : Top concurrent (haut-gauche) ---------- */}
+      {/* ---------- Card flottante : Top concurrent (haut-gauche) ----------
+          Visible uniquement >= lg (1024px) : sur iPad portrait elle
+          chevauchait le titre central. */}
       <motion.div
         initial={reduce ? false : { opacity: 0, x: -12, y: -8 }}
         animate={{ opacity: 1, x: 0, y: 0 }}
         transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1], delay: 0.7 }}
-        className="absolute left-2 sm:left-0 top-2 sm:top-4 z-10"
+        className="hidden lg:block absolute lg:left-0 lg:top-4 z-10"
       >
         <motion.div
           animate={floatA}
@@ -176,26 +178,28 @@ export function HeroMockup({ className }: HeroMockupProps) {
         </motion.div>
       </motion.div>
 
-      {/* ---------- Card flottante : impact (bas-droite) ---------- */}
+      {/* ---------- Card flottante : impact (bas-droite) ----------
+          Cachee sur mobile (<768px), version compacte md (768-1024),
+          version pleine taille >= lg. */}
       <motion.div
         initial={reduce ? false : { opacity: 0, x: 12, y: 8 }}
         animate={{ opacity: 1, x: 0, y: 0 }}
         transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1], delay: 0.9 }}
-        className="absolute right-2 sm:right-0 bottom-3 sm:bottom-6 z-10"
+        className="hidden md:block absolute md:right-0 md:bottom-4 lg:bottom-6 z-10"
       >
         <motion.div
           animate={floatB}
-          className="rounded-2xl border border-success/30 bg-success/10 backdrop-blur-sm shadow-ankora-card px-3.5 py-2.5 sm:px-4 sm:py-3"
+          className="rounded-2xl border border-success/30 bg-success/10 backdrop-blur-sm shadow-ankora-card px-2.5 py-2 lg:px-4 lg:py-3"
         >
-          <div className="flex items-center gap-2">
-            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-success/20 text-success">
-              <ArrowUpRight className="h-4 w-4" strokeWidth={2.5} />
+          <div className="flex items-center gap-1.5 lg:gap-2">
+            <span className="flex h-6 w-6 lg:h-7 lg:w-7 shrink-0 items-center justify-center rounded-lg bg-success/20 text-success">
+              <ArrowUpRight className="h-3.5 w-3.5 lg:h-4 lg:w-4" strokeWidth={2.5} />
             </span>
             <div>
               <p className="text-[9px] font-semibold uppercase tracking-wider text-success/80">
                 Plan d&apos;action
               </p>
-              <p className="font-mono text-sm font-bold tabular-nums text-success">
+              <p className="font-mono text-xs lg:text-sm font-bold tabular-nums text-success">
                 +18 pts en 30j
               </p>
             </div>
@@ -203,12 +207,14 @@ export function HeroMockup({ className }: HeroMockupProps) {
         </motion.div>
       </motion.div>
 
-      {/* ---------- Card flottante : trophée podium (top-right) ---------- */}
+      {/* ---------- Card flottante : trophée podium (top-right) ----------
+          Visible uniquement >= lg : evite le chevauchement avec le score
+          central sur iPad portrait. */}
       <motion.div
         initial={reduce ? false : { opacity: 0, scale: 0.9 }}
         animate={{ opacity: 1, scale: 1 }}
         transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1], delay: 1.1 }}
-        className="hidden sm:block absolute right-0 top-2 z-10"
+        className="hidden lg:block absolute right-0 top-2 z-10"
       >
         <motion.div
           animate={floatA}

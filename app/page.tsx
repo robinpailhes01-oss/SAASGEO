@@ -8,7 +8,7 @@
 //   3. MetricsBar : 4 KPI cards reels (4 IA, 30 questions, 51 criteres,
 //      ~5 minutes) — ancre le serieux des le "above the fold scroll"
 //   4. HowItWorks : 3 etapes
-//   5. WhyAnkora : 3 differenciateurs (tourisme, francais, plan d'action)
+//   5. WhyAnkora : 3 differenciateurs (multi-secteurs, francais, plan d'action)
 //   6. WhyUrgent v2 : layout 2 cols texte+stats / AISearchMockup
 //   7. FinalCta : encadre gradient avec form integre
 //   8. Footer

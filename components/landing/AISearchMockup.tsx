@@ -10,10 +10,11 @@ import { cn } from "@/lib/utils";
 // <AISearchMockup /> — faux screenshot d'une conversation IA.
 //
 // Stylise comme une interface ChatGPT-like : header brand-colore,
-// bulle question utilisateur, reponse assistant avec liste de 3 hotels
-// generiques (Hotel A/B/C — pas de vrais noms inventes pour rester
-// honnete). Overlay rotate ~6deg en bas-droite : "Votre marque
-// n'apparait pas" pour creer le declic emotionnel.
+// bulle question utilisateur, reponse assistant avec liste de 3
+// "Marque A/B/C" generiques (pas de vrais noms inventes pour rester
+// honnete). Question universelle qui marche pour tout secteur.
+// Overlay rotate ~6deg en bas-droite : "Votre marque n'apparait pas"
+// pour creer le declic emotionnel.
 //
 // Tout en CSS pur (pas d'image). Animation : leger fade + scale au
 // scroll. Design coherent avec le rapport Ankora (rounded-2xl, font
@@ -25,9 +26,9 @@ type AISearchMockupProps = {
 };
 
 const FAKE_RESULTS = [
-  { name: "Hôtel A", city: "Toulouse", rating: "4.8" },
-  { name: "Hôtel B", city: "Toulouse", rating: "4.6" },
-  { name: "Hôtel C", city: "Toulouse", rating: "4.5" },
+  { name: "Marque A", segment: "Leader du marché", rating: "4.8" },
+  { name: "Marque B", segment: "Leader du marché", rating: "4.6" },
+  { name: "Marque C", segment: "Leader du marché", rating: "4.5" },
 ] as const;
 
 export function AISearchMockup({ className }: AISearchMockupProps) {
@@ -69,7 +70,7 @@ export function AISearchMockup({ className }: AISearchMockupProps) {
         <div className="px-4 pt-4">
           <div className="ml-auto max-w-[85%] rounded-2xl rounded-tr-sm bg-secondary/70 px-3.5 py-2.5">
             <p className="text-sm text-ankora-text leading-snug">
-              Quels sont les meilleurs hôtels 4 étoiles à Toulouse ?
+              Quelles sont les meilleures marques de mon secteur ?
             </p>
           </div>
         </div>
@@ -78,7 +79,7 @@ export function AISearchMockup({ className }: AISearchMockupProps) {
         <div className="px-4 pt-3 pb-4">
           <div className="mr-auto max-w-[92%] rounded-2xl rounded-tl-sm bg-primary/[0.06] border border-primary/10 px-3.5 py-3">
             <p className="text-xs text-ankora-text-soft leading-relaxed">
-              Voici les meilleurs hôtels 4 étoiles à Toulouse :
+              Voici les marques les plus reconnues du secteur :
             </p>
             <ul className="mt-2 space-y-1.5">
               {FAKE_RESULTS.map((r, i) => (
@@ -93,7 +94,7 @@ export function AISearchMockup({ className }: AISearchMockupProps) {
                     <span className="font-semibold">{r.name}</span>
                     <span className="text-ankora-text-muted">
                       {" "}
-                      — {r.city} · {r.rating}/5
+                      — {r.segment} · {r.rating}/5
                     </span>
                   </span>
                 </li>

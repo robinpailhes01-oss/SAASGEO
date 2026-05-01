@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Hotel, Languages, Target } from "lucide-react";
+import { Layers, Languages, Target } from "lucide-react";
 
 import { Card, CardContent } from "@/components/ui/card";
 import { Container } from "@/components/layout/Container";
@@ -14,7 +14,9 @@ import { cn } from "@/lib/utils";
 // Cards horizontales avec icone en haut, titre, description. Hover lift
 // subtil. Anime au scroll par AnimatedSection (whileInView margin -120).
 //
-// Wording : aucune mention de "GEO" jargon. Tout est business-pur.
+// Wording : positionnement multi-secteurs (tourisme, e-commerce, services,
+// B2B...). Aucune mention de "GEO" jargon dans les descriptions —
+// l'eyebrow Hero suffit pour le mot-cle SEO.
 // =====================================================================
 
 type Feature = {
@@ -27,10 +29,10 @@ type Feature = {
 
 const FEATURES: Feature[] = [
   {
-    icon: Hotel,
-    title: "Spécialisé tourisme et hôtellerie",
+    icon: Layers,
+    title: "Adapté à votre secteur",
     description:
-      "Pas un outil générique. Templates adaptés à votre secteur, vocabulaire de vos clients réels, concurrents pertinents.",
+      "Templates adaptés à votre activité, vocabulaire de vos clients réels, concurrents identifiés. Tourisme, e-commerce, services, B2B.",
     accent: "text-primary",
     bg: "bg-primary/15",
   },
@@ -68,8 +70,7 @@ export function WhyAnkora() {
             Pourquoi Ankora
           </h2>
           <p className="mt-4 text-base sm:text-lg text-ankora-text-soft">
-            Trois différences qui changent tout pour les marques françaises du
-            tourisme.
+            Trois différences qui changent tout pour les marques françaises.
           </p>
         </div>
 

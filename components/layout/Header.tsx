@@ -15,6 +15,12 @@ import { Button } from "@/components/ui/button";
 //
 // La prop `variant` permet de masquer le CTA sur la landing elle-meme
 // (eviter le bouton redondant avec le hero).
+//
+// Note iOS Safari (theme-color + fade) : le viewport.themeColor de
+// app/layout.tsx aligne la status bar Safari sur le fond #FAFAFE.
+// En complement, un fin overlay gradient en sommet de header lisse
+// la jonction visuelle entre la barre Safari et la page (utile sur
+// iPad ou la barre d'URL est translucide).
 // =====================================================================
 
 type HeaderProps = {
@@ -24,8 +30,14 @@ type HeaderProps = {
 export function Header({ variant = "default" }: HeaderProps) {
   return (
     <header className="sticky top-0 z-30 border-b border-ankora-border bg-background/85 backdrop-blur-md">
+      {/* Fade-out overlay tout en haut : adoucit la jonction avec la
+          status bar Safari iOS et masque tout glow residuel. */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-x-0 top-0 h-3 bg-gradient-to-b from-background via-background/85 to-transparent"
+      />
       <Container>
-        <div className="flex h-16 items-center justify-between">
+        <div className="relative flex h-16 items-center justify-between">
           <Logo />
 
           {variant === "default" && (

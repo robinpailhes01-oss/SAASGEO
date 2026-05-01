@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import { GeistSans } from "geist/font/sans";
 import { Toaster } from "@/components/ui/sonner";
@@ -23,10 +23,19 @@ const jetbrains = JetBrains_Mono({
 export const metadata: Metadata = {
   title: "Ankora — Ancrez votre marque dans les IA",
   description:
-    "Audit GEO complet et tracking de visibilite dans les IA conversationnelles (ChatGPT, Claude, Perplexity, Gemini). Specialise tourisme et hotellerie.",
+    "Audit GEO complet et tracking de visibilite dans les IA conversationnelles (ChatGPT, Claude, Perplexity, Gemini). Pour toutes les marques francaises.",
   metadataBase: new URL(
     process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"
   ),
+};
+
+// Viewport export Next.js 14+ : themeColor controle la couleur de la
+// status bar Safari iOS (et Chrome Android). On utilise la couleur
+// exacte du --background defini en CSS (#FAFAFE) pour que la status
+// bar fusionne avec le fond de la landing — fini la "barre blanche"
+// visible sur iPad portrait.
+export const viewport: Viewport = {
+  themeColor: "#FAFAFE",
 };
 
 export default function RootLayout({

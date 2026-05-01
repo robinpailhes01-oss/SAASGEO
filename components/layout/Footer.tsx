@@ -33,7 +33,7 @@ export function Footer() {
             <Logo />
             <p className="text-sm text-ankora-text-soft max-w-xs">
               Ancrez votre marque dans les IA conversationnelles.
-              Audit GEO et tracking de visibilité, spécialisé tourisme et hôtellerie.
+              Audit GEO et tracking de visibilité pour les marques françaises.
             </p>
           </div>
 

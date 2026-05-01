@@ -185,7 +185,7 @@ export async function analyzeWithLlm(args: {
 
   // Track le cost dans api_usage
   await trackApiCall({
-    user_id: null,
+    user_id: process.env.ADMIN_USER_ID ?? null,
     audit_id: args.audit_id ?? null,
     provider: modelToProvider(model),
     model,

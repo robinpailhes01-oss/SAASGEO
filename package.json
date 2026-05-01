@@ -23,6 +23,7 @@
     "clsx": "^2.1.1",
     "framer-motion": "^11.11.17",
     "geist": "^1.7.0",
+    "inngest": "^4.2.6",
     "lucide-react": "^0.460.0",
     "marked": "^18.0.2",
     "next": "14.2.34",

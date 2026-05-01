@@ -37,10 +37,13 @@ interface GeminiResponse {
 
 export class GeminiDirectError extends Error {
   status: number;
+  // True si l'erreur est temporaire et merite un retry (503, 429, 500)
+  isRetryable: boolean;
   constructor(message: string, status: number) {
     super(message);
     this.name = "GeminiDirectError";
     this.status = status;
+    this.isRetryable = status === 503 || status === 429 || status === 500 || status === 502 || status === 504;
   }
 }
 

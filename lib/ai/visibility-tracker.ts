@@ -57,6 +57,9 @@ interface RunOptions {
   concurrency?: number;
   // Verbose : log chaque progression
   verbose?: boolean;
+  // Optionnel : filtre sur un seul provider (utilise par Inngest fan-out
+  // pour parallelisation par provider). Si absent : tous les 4 providers.
+  only_provider?: AIProvider;
 }
 
 // Limiteur de concurrence simple : execute des taches en parallele
@@ -141,7 +144,7 @@ async function trackOne(args: {
 
     // Track le cost de la visibility query
     await trackApiCall({
-      user_id: null,
+      user_id: process.env.ADMIN_USER_ID ?? null,
       audit_id: args.audit_id ?? null,
       provider,
       model,
@@ -202,7 +205,9 @@ export async function trackVisibility(
   const concurrency = opts.concurrency ?? 8;
   const verbose = opts.verbose ?? true;
 
-  const providers: AIProvider[] = ["openai", "anthropic", "perplexity", "gemini"];
+  const providers: AIProvider[] = opts.only_provider
+    ? [opts.only_provider]
+    : ["openai", "anthropic", "perplexity", "gemini"];
   const allTasks: Array<{ query: VisibilityQuery; provider: AIProvider }> = [];
   for (const q of queries) {
     for (const p of providers) {

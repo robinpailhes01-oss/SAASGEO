@@ -158,22 +158,7 @@ export type Database = {
           tokens_out?: number
           user_id?: string | null
         }
-        Relationships: [
-          {
-            foreignKeyName: "api_usage_audit_id_fkey"
-            columns: ["audit_id"]
-            isOneToOne: false
-            referencedRelation: "audits"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "api_usage_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
       audit_business_info: {
         Row: {
@@ -209,15 +194,7 @@ export type Database = {
           raw_extraction?: Json | null
           services?: Json
         }
-        Relationships: [
-          {
-            foreignKeyName: "audit_business_info_audit_id_fkey"
-            columns: ["audit_id"]
-            isOneToOne: true
-            referencedRelation: "audits"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
       audit_recommendations: {
         Row: {
@@ -253,15 +230,7 @@ export type Database = {
           priority?: Database["public"]["Enums"]["recommendation_priority"]
           title?: string
         }
-        Relationships: [
-          {
-            foreignKeyName: "audit_recommendations_audit_id_fkey"
-            columns: ["audit_id"]
-            isOneToOne: false
-            referencedRelation: "audits"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
       audit_scores: {
         Row: {
@@ -297,15 +266,7 @@ export type Database = {
           visibility_per_provider?: Json
           visibility_score?: number
         }
-        Relationships: [
-          {
-            foreignKeyName: "audit_scores_audit_id_fkey"
-            columns: ["audit_id"]
-            isOneToOne: true
-            referencedRelation: "audits"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
       audit_technical: {
         Row: {
@@ -329,15 +290,7 @@ export type Database = {
           created_at?: string
           score?: number
         }
-        Relationships: [
-          {
-            foreignKeyName: "audit_technical_audit_id_fkey"
-            columns: ["audit_id"]
-            isOneToOne: false
-            referencedRelation: "audits"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
       audits: {
         Row: {
@@ -388,15 +341,37 @@ export type Database = {
           url_normalized?: string
           user_id?: string
         }
-        Relationships: [
-          {
-            foreignKeyName: "audits_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
+      }
+      email_captures: {
+        Row: {
+          audit_id: string | null
+          created_at: string
+          email: string
+          id: string
+          ip_address: unknown
+          source: string | null
+          user_agent: string | null
+        }
+        Insert: {
+          audit_id?: string | null
+          created_at?: string
+          email: string
+          id?: string
+          ip_address?: unknown
+          source?: string | null
+          user_agent?: string | null
+        }
+        Update: {
+          audit_id?: string | null
+          created_at?: string
+          email?: string
+          id?: string
+          ip_address?: unknown
+          source?: string | null
+          user_agent?: string | null
+        }
+        Relationships: []
       }
       profiles: {
         Row: {
@@ -450,15 +425,31 @@ export type Database = {
           position?: number
           text?: string
         }
-        Relationships: [
-          {
-            foreignKeyName: "queries_audit_id_fkey"
-            columns: ["audit_id"]
-            isOneToOne: false
-            referencedRelation: "audits"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
+      }
+      rate_limits: {
+        Row: {
+          action: string
+          audit_id: string | null
+          created_at: string
+          id: string
+          ip_address: unknown
+        }
+        Insert: {
+          action: string
+          audit_id?: string | null
+          created_at?: string
+          id?: string
+          ip_address: unknown
+        }
+        Update: {
+          action?: string
+          audit_id?: string | null
+          created_at?: string
+          id?: string
+          ip_address?: unknown
+        }
+        Relationships: []
       }
     }
     Views: {
@@ -472,18 +463,19 @@ export type Database = {
           total_tokens_out: number | null
           user_id: string | null
         }
-        Relationships: [
-          {
-            foreignKeyName: "api_usage_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
     }
     Functions: {
+      check_rate_limit: {
+        Args: {
+          p_action: string
+          p_ip: unknown
+          p_max: number
+          p_window_minutes: number
+        }
+        Returns: boolean
+      }
       user_owns_audit: { Args: { p_audit_id: string }; Returns: boolean }
     }
     Enums: {

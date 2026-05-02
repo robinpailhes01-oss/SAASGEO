@@ -165,10 +165,12 @@ export function ScoreHero({
       {/* Insight ligne : commentaire pedagogique sur l'asymetrie best/worst.
           Ne s'affiche que si l'ecart est significatif (>= 25 points) — sinon
           la presence sur les 4 IA est equilibree, pas besoin d'expliquer.
-          Le claim "70% des recherches" repose sur les parts de marche IA en
-          France 2026 : ChatGPT ~60%, Gemini ~22%, Claude ~8%, Perplexity ~8%.
-          Source : combined GA4 + Statcounter referrer data, ordres de
-          grandeur stables sur 2025-2026. */}
+          Pour le claim de part de marche, on cite UNIQUEMENT ChatGPT (~60%
+          des recherches IA en France). Source : combined GA4 + Statcounter
+          referrer data, ordres de grandeur stables 2025-2026 (ChatGPT ~60%,
+          Gemini ~22%, Claude ~8%, Perplexity ~8%). On evite l'amalgame
+          ChatGPT+Claude qui suggererait que Claude pese autant que
+          ChatGPT — c'est faux et ca decredibilise le rapport. */}
       {(() => {
         if (perProvider.length < 2) return null;
         const sorted = [...perProvider].sort((a, b) => b.score - a.score);
@@ -176,12 +178,12 @@ export function ScoreHero({
         const worst = sorted[sorted.length - 1];
         if (best.score - worst.score < 25) return null;
 
-        // Identifie si ChatGPT ou Claude est dans les "weak" (sous 30) :
-        // ils concentrent ~70% de l'usage IA en France, donc une faible
-        // visibilite sur eux est particulierement couteuse.
-        const HIGH_VOLUME_PROVIDERS = new Set(["openai", "anthropic"]);
-        const weakHighVolume = sorted.filter(
-          (p) => p.score < 30 && HIGH_VOLUME_PROVIDERS.has(p.provider)
+        // Mention volume : seulement si ChatGPT (openai) est dans les
+        // weak (<30). Claude / Gemini / Perplexity n'ont pas une part
+        // de marche suffisamment massive pour ancrer un message
+        // "concentre les recherches" credible.
+        const chatGPTInWeak = sorted.find(
+          (p) => p.score < 30 && p.provider === "openai"
         );
 
         return (
@@ -195,14 +197,13 @@ export function ScoreHero({
               {worst.label}
             </span>{" "}
             ({worst.score}/100)
-            {weakHighVolume.length > 0 ? (
+            {chatGPTInWeak ? (
               <>
-                {" "}—{" "}
+                .{" "}
                 <span className="font-semibold text-ankora-text">
-                  {weakHighVolume.map((p) => p.label).join(" et ")}
+                  ChatGPT concentre ~60% des recherches IA en France
                 </span>{" "}
-                concentre{weakHighVolume.length > 1 ? "nt" : ""} ~70% des
-                recherches IA en France
+                — c&apos;est là que vos clients cherchent en priorité
               </>
             ) : null}
             .

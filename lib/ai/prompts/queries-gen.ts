@@ -45,49 +45,93 @@ export type GeneratedQueries = z.infer<typeof GeneratedQueriesSchema>;
 // localisation. Renvoie un block d'instruction multi-lignes integre
 // au prompt user.
 //
+// PIVOT STRATEGIQUE city_main : la majorite des prospects cherchent
+// "hotel Montpellier" pas "hotel Carnon" (Montpellier = grande ville
+// reference, Carnon = petite ville physique a 20km). Le split par
+// niveau geographique est donc :
+//
+//   15 questions sur 30 -> city_main (ex: Montpellier)
+//    6 questions sur 30 -> city_exact (ex: Carnon)
+//    6 questions sur 30 -> region (ex: Hérault)
+//    3 questions sur 30 -> national (sans geo)
+//
+// Si city_main n'est pas resolu, on retombe sur city_exact pour les
+// 15 questions city_main (degrade mais fonctionnel).
+//
 // SECURITE : on ne laisse JAMAIS un placeholder ("votre ville",
 // "votre region") fuiter dans la directive — un placeholder leak
-// finirait dans une vraie query envoyee aux 4 IA. Si scope='local'
-// mais qu'aucune source de localisation utilisable n'est presente
-// (city, region, geo_zone), on bascule en strategie 'national' et
-// on logge un warning. C'est un bug grave que stepExtractBusiness
-// devrait avoir absorbe via le hint user_geo_target ; cette garde
-// est une derniere ligne de defense.
+// finirait dans une vraie query envoyee aux 4 IA.
 function buildGeoStrategy(business: BusinessInfo): string {
-  const { business_scope, city, region, country, geo_zone } = business;
+  const {
+    business_scope,
+    city,
+    city_main,
+    region,
+    country,
+    geo_zone,
+  } = business;
 
   if (business_scope === "local") {
-    // On a besoin AU MOINS d'une chaine geographique non vide.
-    // Priorite : city > region > geo_zone.
-    const localityRaw = city || region || geo_zone || "";
-    const localityClean = localityRaw.trim();
-
-    if (!localityClean) {
+    // Au minimum on a besoin d'une chaine geographique non vide.
+    const localityRaw = city || city_main || region || geo_zone || "";
+    if (!localityRaw.trim()) {
       console.warn(
-        "[queries-gen] business_scope='local' mais aucune localisation utilisable (city/region/geo_zone tous vides) — fallback en strategie nationale pour eviter un placeholder leak."
+        "[queries-gen] business_scope='local' mais aucune localisation utilisable (city/city_main/region/geo_zone tous vides) — fallback en strategie nationale pour eviter un placeholder leak."
       );
       return buildNationalStrategy(business);
     }
 
-    // city peut etre null mais region presente -> on pivote sur la region
-    // comme "ville" (cas departement entier). region peut etre null aussi
-    // -> on utilise la meme valeur pour les questions REGIONALES.
-    const cityLabel = (city || region || geo_zone || localityClean).trim();
+    // Niveaux geo (dans l'ordre de preference pour le split 15/6/6/3) :
+    // 1) MAIN  = city_main (Montpellier) — 15 questions
+    // 2) EXACT = city (Carnon)            —  6 questions
+    // 3) REGION = region (Hérault)        —  6 questions
+    // 4) NATIONAL                          —  3 questions
+    //
+    // Si city_main est null, on duplique city dans MAIN (degrade gracieux,
+    // les 15 + 6 = 21 questions utilisent city_exact).
+    const mainLabel = (city_main || city || geo_zone || localityRaw).trim();
+    const exactLabel = (city || city_main || geo_zone || localityRaw).trim();
     const regionLabel = (region || country || "France").trim();
     const countryLabel = (country || "France").trim();
+    const sameMainExact = mainLabel.toLowerCase() === exactLabel.toLowerCase();
 
     return `STRATEGIE GEO — BUSINESS LOCAL :
-Le business est ancre localement a ${cityLabel}${region && region !== cityLabel ? ` (${region})` : ""}${country ? `, ${country}` : ""}. La pertinence du rapport depend de la localisation des questions.
-Repartition OBLIGATOIRE pour les 10 questions "service" :
-  - 5 questions LOCALES mentionnant explicitement "${cityLabel}" (ex: "meilleur [service] a ${cityLabel}", "[service] a ${cityLabel}")
-  - 3 questions REGIONALES mentionnant "${regionLabel}" (ex: "[service] dans ${regionLabel}", "ou trouver [service] en ${regionLabel}")
-  - 2 questions NATIONALES sans mention geographique (pour comparer au marche large)
-Meme repartition pour les 10 questions "comparative" :
-  - 5 comparatives LOCALES (ex: "top 3 [services] a ${cityLabel}", "[concurrent local] vs autres [services] ${cityLabel}")
-  - 3 comparatives REGIONALES (ex: "alternatives a [concurrent] en ${regionLabel}")
-  - 2 comparatives NATIONALES (ex: "top 5 [secteur] en ${countryLabel}")
-Les questions "branded" peuvent rester sans mention geographique (focus marque).
-INTERDIT : ne genere JAMAIS de question contenant les mots "votre ville", "votre region", "[ville]", "[region]" ou tout placeholder. Utilise EXCLUSIVEMENT les valeurs reelles fournies.`;
+Le business est ancre physiquement a ${exactLabel}${region ? `, ${region}` : ""}${country ? `, ${country}` : ""}.${
+  sameMainExact
+    ? ""
+    : ` La grande ville de reference proche est ${mainLabel} — c'est la que la majorite des prospects cherchent (ex: "hotel ${mainLabel}" plutot que "hotel ${exactLabel}").`
+}
+
+REPARTITION OBLIGATOIRE des 30 questions par niveau geographique :
+${
+  sameMainExact
+    ? `- 21 questions mentionnant explicitement "${exactLabel}" (ville exacte = ville de reference)
+- 6 questions mentionnant "${regionLabel}" (region/departement)
+- 3 questions sans mention geographique (marche national)`
+    : `- 15 questions mentionnant "${mainLabel}" (grande ville de reference, intention dominante des prospects)
+- 6 questions mentionnant explicitement "${exactLabel}" (ville exacte du business)
+- 6 questions mentionnant "${regionLabel}" (region/departement)
+- 3 questions sans mention geographique (marche national)`
+}
+
+REPARTITION par categorie (indicatif, total = 30) :
+- branded (10) : 5 avec ${mainLabel}, 3 avec ${exactLabel}, 2 sans geo (focus marque)
+- service (10) : 5 avec ${mainLabel}, 2 avec ${exactLabel}, 2 avec ${regionLabel}, 1 national
+- comparative (10) : 5 avec ${mainLabel}, 1 avec ${exactLabel}, 2 avec ${regionLabel}, 2 national
+${
+  sameMainExact
+    ? "(Note : ville exacte = ville de reference, donc tous les '${mainLabel}' et '${exactLabel}' sont la meme valeur)"
+    : ""
+}
+
+EXEMPLES de questions correctes :
+- branded MAIN  : "Avis sur ${business.brand_name} ${mainLabel}"
+- service MAIN  : "Meilleur [service] a ${mainLabel}"
+- comparative MAIN : "Top 5 [services] a ${mainLabel} en ${countryLabel}"
+- service EXACT : "[service] a ${exactLabel}"
+- service REGION : "[service] dans ${regionLabel}"
+
+INTERDIT ABSOLU : ne genere JAMAIS de question contenant les mots "votre ville", "votre region", "[ville]", "[region]", "[city]", "[location]" ou tout placeholder. Utilise EXCLUSIVEMENT les valeurs reelles fournies ci-dessus.`;
   }
 
   if (business_scope === "international") {

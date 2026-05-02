@@ -167,6 +167,7 @@ export type Database = {
           brand_name: string
           business_scope: string
           city: string | null
+          city_main: string | null
           country: string | null
           created_at: string
           detected_competitors: string[]
@@ -182,6 +183,7 @@ export type Database = {
           brand_name: string
           business_scope?: string
           city?: string | null
+          city_main?: string | null
           country?: string | null
           created_at?: string
           detected_competitors?: string[]
@@ -197,6 +199,7 @@ export type Database = {
           brand_name?: string
           business_scope?: string
           city?: string | null
+          city_main?: string | null
           country?: string | null
           created_at?: string
           detected_competitors?: string[]

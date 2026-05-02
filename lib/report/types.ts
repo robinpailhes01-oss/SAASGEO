@@ -66,6 +66,11 @@ export type ReportData = {
   geo_zone: string | null;
   // Localisation structuree (Phase localisation)
   city: string | null;
+  // city_main : grande ville de reference (>50k hab) la plus proche.
+  // Ex: city='Carnon' -> city_main='Montpellier'. Resolu en backend
+  // par lib/ai/city-resolver. Sert d'eyebrow "Zone {city_main}" et de
+  // pivot pour 50% des queries generees.
+  city_main: string | null;
   region: string | null;
   country: string | null;
   business_scope: BusinessScope;

@@ -19,6 +19,7 @@ const baseBusiness: BusinessInfo = {
   services: ["Location yacht", "Skippers"],
   geo_zone: "Carnon, Hérault",
   city: "Carnon",
+  city_main: "Montpellier",
   region: "Hérault",
   country: "France",
   business_scope: "local",
@@ -27,29 +28,43 @@ const baseBusiness: BusinessInfo = {
 };
 
 describe("buildQueriesGenPrompt — strategie geo", () => {
-  it("LOCAL : injecte la repartition 50/30/20 explicitement", () => {
+  it("LOCAL avec city_main : split 15/6/6/3 et city_main prioritaire", () => {
     const { prompt, system } = buildQueriesGenPrompt(baseBusiness);
 
-    // Contexte business injecte
+    // Contexte business injecte (les deux niveaux)
     expect(prompt).toContain("Carnon");
+    expect(prompt).toContain("Montpellier");
     expect(prompt).toContain("Hérault");
-    expect(prompt).toContain("local");
 
-    // Strategie 50/30/20 obligatoire dans le prompt
+    // Strategie 15/6/6/3 obligatoire dans le prompt
     expect(prompt).toContain("STRATEGIE GEO — BUSINESS LOCAL");
-    expect(prompt).toContain("5 questions LOCALES");
-    expect(prompt).toContain("3 questions REGIONALES");
-    expect(prompt).toContain("2 questions NATIONALES");
-    expect(prompt).toContain("5 comparatives LOCALES");
+    expect(prompt).toContain("15 questions");
+    expect(prompt).toContain("6 questions");
+    expect(prompt).toContain("3 questions");
+    // city_main dominante : phrase qui explique la priorite
+    expect(prompt).toContain("grande ville de reference");
 
     // Sanity : le system prompt rappelle de respecter la strategie
     expect(system).toContain("strategie geographique");
   });
 
-  it("NATIONAL : passe en mode sectoriel sans 50/30/20", () => {
+  it("LOCAL sans city_main : fallback degrade gracieux (21/6/3)", () => {
+    const business: BusinessInfo = {
+      ...baseBusiness,
+      city_main: null,
+    };
+    const { prompt } = buildQueriesGenPrompt(business);
+
+    // city_main absent -> on duplique city dans MAIN
+    expect(prompt).toContain("21 questions mentionnant");
+    expect(prompt).toContain("Carnon");
+  });
+
+  it("NATIONAL : passe en mode sectoriel sans split 15/6/6/3", () => {
     const business: BusinessInfo = {
       ...baseBusiness,
       city: null,
+      city_main: null,
       region: null,
       country: "France",
       business_scope: "national",
@@ -57,15 +72,16 @@ describe("buildQueriesGenPrompt — strategie geo", () => {
     const { prompt } = buildQueriesGenPrompt(business);
 
     expect(prompt).toContain("STRATEGIE GEO — BUSINESS NATIONAL");
-    // Pas de directive 50/30/20 — comportement original preserve
-    expect(prompt).not.toContain("5 questions LOCALES");
-    expect(prompt).not.toContain("3 questions REGIONALES");
+    // Pas de directive locale
+    expect(prompt).not.toContain("15 questions mentionnant");
+    expect(prompt).not.toContain("grande ville de reference");
   });
 
   it("INTERNATIONAL : pas de bias local", () => {
     const business: BusinessInfo = {
       ...baseBusiness,
       city: null,
+      city_main: null,
       region: null,
       country: null,
       business_scope: "international",
@@ -73,13 +89,14 @@ describe("buildQueriesGenPrompt — strategie geo", () => {
     const { prompt } = buildQueriesGenPrompt(business);
 
     expect(prompt).toContain("STRATEGIE GEO — BUSINESS INTERNATIONAL");
-    expect(prompt).not.toContain("5 questions LOCALES");
+    expect(prompt).not.toContain("15 questions mentionnant");
   });
 
   it("LOCAL sans city detectee : fallback sur geo_zone", () => {
     const business: BusinessInfo = {
       ...baseBusiness,
       city: null,
+      city_main: null,
       region: null,
       // geo_zone garde "Carnon, Hérault"
       business_scope: "local",

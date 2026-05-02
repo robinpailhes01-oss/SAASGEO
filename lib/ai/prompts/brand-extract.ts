@@ -38,7 +38,17 @@ export const BusinessInfoSchema = z.object({
     .string()
     .nullable()
     .describe(
-      "Ville detectee depuis le site (mention adresse, footer, page contact, schema.org). Ex: 'Carnon', 'Paris', 'Lyon'. null si non detectee."
+      "Ville exacte detectee depuis le site (mention adresse, footer, page contact, schema.org). Ex: 'Carnon', 'Paris', 'Lyon'. null si non detectee."
+    ),
+  // Resolu en backend par city-resolver (pas demande au LLM ici, mais
+  // accepte si le LLM le devine pour fallback). Le pipeline ecrasera
+  // cette valeur via api-adresse.data.gouv.fr + nearest >50k hab.
+  city_main: z
+    .string()
+    .nullable()
+    .optional()
+    .describe(
+      "Grande ville de reference (>50k hab) la plus proche. Resolu en backend. null par defaut."
     ),
   region: z
     .string()

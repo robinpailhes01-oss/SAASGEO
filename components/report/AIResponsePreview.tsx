@@ -35,12 +35,14 @@ type AIResponsePreviewProps = {
   brandName: string;
   // Localisation detectee — affichee en eyebrow pour ancrer la
   // pertinence locale du rapport. Si scope=local + city : badge vert
-  // "DETECTION : Activite locale a {city}". Si scope=national/inconnu
+  // "DETECTION : Activite locale a {city}". Si city_main present et
+  // different : suffixe "· Zone {city_main}". Si scope=national/inconnu
   // sans city : disclaimer subtil. Aucun bandeau si on ne peut rien
   // dire d'utile.
   location?: {
     scope: "local" | "national" | "international";
     city: string | null;
+    city_main: string | null;
     region: string | null;
   };
 };
@@ -312,10 +314,18 @@ export function AIResponsePreview({
   const locationBadge = (() => {
     if (!location) return null;
     if (location.scope === "local" && location.city) {
-      const sublabel = location.region ? ` (${location.region})` : "";
+      const regionPart = location.region ? ` (${location.region})` : "";
+      // Suffixe "· Zone {city_main}" si city_main existe ET est
+      // different de la ville exacte (sinon on duplique).
+      const mainPart =
+        location.city_main &&
+        location.city_main.toLowerCase().trim() !==
+          location.city.toLowerCase().trim()
+          ? ` · Zone ${location.city_main}`
+          : "";
       return {
         tone: "success" as const,
-        label: `DÉTECTION : Activité locale à ${location.city}${sublabel}`,
+        label: `DÉTECTION : Activité locale à ${location.city}${regionPart}${mainPart}`,
       };
     }
     if (

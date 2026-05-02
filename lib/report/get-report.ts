@@ -283,7 +283,7 @@ export async function getReport(auditId: string): Promise<ReportData | null> {
       .maybeSingle(),
     sb
       .from("audit_business_info")
-      .select("brand_name, industry, geo_zone, city, region, country, business_scope")
+      .select("brand_name, industry, geo_zone, city, city_main, region, country, business_scope")
       .eq("audit_id", auditId)
       .maybeSingle(),
     sb.from("queries").select("id").eq("audit_id", auditId),
@@ -591,6 +591,7 @@ export async function getReport(auditId: string): Promise<ReportData | null> {
     industry: business?.industry ?? null,
     geo_zone: business?.geo_zone ?? null,
     city: business?.city ?? null,
+    city_main: business?.city_main ?? null,
     region: business?.region ?? null,
     country: business?.country ?? null,
     business_scope: ((business?.business_scope as

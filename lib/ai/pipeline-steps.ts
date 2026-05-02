@@ -26,6 +26,7 @@ import {
 } from "./prompts/brand-extract";
 import type { QueryIdMap } from "./query-id-map";
 import { parseUserGeoTarget } from "./geo-target";
+import { resolveCityMain } from "./city-resolver";
 import {
   buildQueriesGenPrompt,
   GeneratedQueriesSchema,
@@ -182,6 +183,35 @@ export async function stepExtractBusiness(args: {
       geo_zone: business.geo_zone ?? userHint,
       business_scope: "local",
     };
+  }
+
+  // Resolution city_main : grande ville de reference (>50k hab) la plus
+  // proche. Critique pour la pertinence des queries (la majorite des
+  // prospects cherchent "hotel Montpellier" pas "hotel Carnon"). Fait
+  // un appel HTTP a api-adresse.data.gouv.fr puis Haversine sur la
+  // liste statique MAJOR_CITIES_FR. Echec reseau -> null, le pipeline
+  // continue et queries-gen fallback sur city_exact.
+  if (business.business_scope === "local") {
+    const resolveQuery =
+      business.city || business.geo_zone || userHint || "";
+    if (resolveQuery.trim()) {
+      try {
+        const resolved = await resolveCityMain(resolveQuery);
+        if (resolved) {
+          business = {
+            ...business,
+            city_main: resolved.name,
+            // Si on n'a pas de region detectee mais le resolveur en a
+            // une (region INSEE fiable), on l'utilise.
+            region: business.region ?? resolved.region,
+          };
+        }
+      } catch (e) {
+        console.warn(
+          `[stepExtractBusiness] city_main resolve failed : ${e instanceof Error ? e.message : String(e)} (le pipeline continue sans city_main)`
+        );
+      }
+    }
   }
 
   if (args.persist) {

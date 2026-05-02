@@ -186,6 +186,7 @@ export default async function AuditReportPage({
         location={{
           scope: report.business_scope,
           city: report.city,
+          city_main: report.city_main,
           region: report.region,
         }}
       />

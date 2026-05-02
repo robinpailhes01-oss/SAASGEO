@@ -122,6 +122,7 @@ export async function persistBusinessInfo(args: {
     // Localisation structuree — drive la generation de queries dans
     // stepGenerateQueries (cf. lib/ai/prompts/queries-gen.ts).
     city: args.business.city ?? null,
+    city_main: args.business.city_main ?? null,
     region: args.business.region ?? null,
     country: args.business.country ?? null,
     business_scope: args.business.business_scope ?? "national",

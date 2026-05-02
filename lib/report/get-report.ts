@@ -161,16 +161,31 @@ function buildWhyReasons(
   ];
 }
 
-// Genere le label d'impact d'une recommendation.
-// quick_win -> 30 jours, medium -> 60, long_term -> 90.
-// impact_score (1-10) -> environ 2 points de score par unite, borne [5..20].
+// Genere le label d'impact d'une recommendation EN LANGAGE BUSINESS.
+// Format : "Yh de travail · +X clients/mois estimés"
+//
+// Mapping :
+//   - effort selon priority :
+//       quick_win  -> "2h"     (chose qui se fait dans la journee)
+//       medium     -> "1 jour" (qq heures sur 2-3 jours)
+//       long_term  -> "1 sem"  (chantier non trivial)
+//   - clients/mois : impact_score (1-10) x 3 -> [3..30] clients estimes.
+//     Hypothese pedagogique d'un commerce local moyen : 1 unite d'impact
+//     LLM ~= 3 clients/mois. C'est volontairement arrondi et libelle
+//     "estimes" pour rester honnete (la valeur reelle depend du
+//     volume de recherche du secteur, qu'on n'a pas mesure ici).
 function impactLabel(
   priority: "quick_win" | "medium" | "long_term",
   impactScore: number
 ): string {
-  const days = priority === "quick_win" ? 30 : priority === "medium" ? 60 : 90;
-  const pts = Math.max(5, Math.min(20, Math.round(impactScore * 2)));
-  return `+${pts} points en ${days} jours`;
+  const effort =
+    priority === "quick_win"
+      ? "2h"
+      : priority === "medium"
+      ? "1 jour"
+      : "1 sem";
+  const clients = Math.max(3, Math.min(30, Math.round(impactScore * 3)));
+  return `${effort} de travail · +${clients} clients/mois estimés`;
 }
 
 // Tronque une description proprement sur le dernier espace avant la limite.
@@ -182,27 +197,29 @@ function truncate(text: string, max: number): string {
 }
 
 // Recommandations templatees de fallback (cas <3 recos en DB).
+// V2 : langage business, sans jargon. Format aligne sur le prompt
+// synthesis ("[Ce que vous perdez]" puis "[Action en simple]").
 const FALLBACK_RECOS: PriorityAction[] = [
   {
     position: 1,
-    title: "Créer votre fichier llms.txt",
+    title: "Vos concurrents apparaissent à votre place sur les questions IA",
     description:
-      "Permet aux IA de comprendre votre offre instantanément, sans crawler toutes vos pages.",
-    impact_label: "+15 points en 30 jours",
+      "Ajoutez sur votre site un fichier court qui explique votre activité aux IA — comme une fiche d'identité visible par ChatGPT, Claude et leurs concurrents. Pas besoin de développeur.",
+    impact_label: "2h de travail · +15 clients/mois estimés",
   },
   {
     position: 2,
-    title: "Optimiser vos pages services",
+    title: "Vos pages ne répondent pas aux questions exactes des clients",
     description:
-      "Structure adaptée aux questions clients : titres clairs, FAQ, exemples concrets.",
-    impact_label: "+18 points en 60 jours",
+      "Créez 1 page par question type que posent vos clients (ex: 'séjour romantique à votre ville'). Les IA piochent les pages qui répondent précisément à ces requêtes.",
+    impact_label: "1 jour de travail · +18 clients/mois estimés",
   },
   {
     position: 3,
-    title: "Construire votre autorité externe",
+    title: "Les sites cités par les IA ne parlent pas de vous",
     description:
-      "Présence sur Wikipedia, presse sectorielle et annuaires métier que lisent les IA.",
-    impact_label: "+15 points en 90 jours",
+      "Demandez à être référencé sur les annuaires et la presse locale qu'utilisent les IA pour citer des marques — Google, Pages Jaunes, presse régionale, blogs sectoriels.",
+    impact_label: "1 sem de travail · +15 clients/mois estimés",
   },
 ];
 

@@ -206,9 +206,56 @@ describe("prompts/synthesis", () => {
     // City injectee
     expect(prompt).toContain("Carnon");
     expect(prompt).toContain("Hérault");
-    // System prompt rappelle l'interdit generique
-    expect(system).toContain("PERSONNALISEES");
+    // System prompt rappelle l'interdit generique + langage business
     expect(system).toContain("INTERDIT");
+    // V3 : interdictions de jargon (refonte langage business)
+    expect(system).toContain("llms.txt");
+    expect(system).toContain("schema.org");
+    expect(system).toContain("robots.txt");
+    expect(system).toContain("clients/mois");
+    // Pas le mot "score" comme metrique acceptee
+    expect(system).toContain("score");
+  });
+
+  it("REGRESSION langage business : interdit le jargon technique", () => {
+    const { system } = buildSynthesisPrompt({
+      brand_name: "Hotel Neptune",
+      industry: "Hotellerie",
+      city: "Carnon",
+      region: "Hérault",
+      technical_score: 30,
+      visibility_score: 25,
+      visibility_per_provider: { openai: 25, anthropic: 25, perplexity: 25, gemini: 25 },
+      mention_rate: 25,
+      citation_rate: 5,
+      top_competitors_observed: ["Domaine de Verchant"],
+      failed_tech_checks: [],
+      passed_tech_checks_count: 40,
+      total_tech_checks: 51,
+    });
+    // Liste explicite des termes que le LLM doit traduire
+    const interdits = [
+      "llms.txt",
+      "schema.org",
+      "JSON-LD",
+      "robots.txt",
+      "GPTBot",
+      "ClaudeBot",
+      "CrawlBot",
+      "User-agent",
+      "+X points",
+    ];
+    for (const term of interdits) {
+      // Le system prompt MENTIONNE le terme (dans la liste INTERDIT) :
+      // c'est OK et meme necessaire. Ce test verifie juste qu'on l'ecrit
+      // bien dans les regles, pas qu'on l'evite dans le prompt.
+      expect(system).toContain(term);
+    }
+    // Reformulations attendues
+    expect(system).toContain("un fichier qui explique votre activite aux IA");
+    expect(system).toContain("une balise invisible");
+    expect(system).toContain("les robots de ChatGPT");
+    expect(system).toContain("autorisations donnees aux IA");
   });
 
   it("ne casse pas si missed_opportunities absent (compat retro)", () => {

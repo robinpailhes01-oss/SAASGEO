@@ -10,20 +10,31 @@ import { cn } from "@/lib/utils";
 // =====================================================================
 // <ScoreHero /> — bloc 1 du rapport.
 //
-// Score global affiche en TRES gros, anime de 0 vers la valeur finale
-// (count-up 1.5s easeOutCubic). Couleur dynamique selon le tier :
-//   - low  (<40)   : rouge destructive
-//   - medium (40-69) : orange warning
-//   - high (>=70) : vert success
+// V3 (refonte langage business) : la phrase "X clients sur 100 ne vous
+// trouvent pas" devient le titre principal. Le score 0-100 reste affiche
+// mais en SECONDAIRE (plus petit) pour les curieux qui veulent un
+// indicateur synthetique.
 //
-// En dessous, 4 mini-scores par IA en font mono pour ancrer le serieux
-// ("on a vraiment mesure"). Chaque mini-score a sa propre count-up
-// avec un leger stagger pour que l'oeil les decouvre l'un apres l'autre.
+// Pourquoi ? Nos clients sont des commercants locaux. Ils comprennent
+// "67 clients perdus" mieux que "27/100". Le chiffre business prime.
+//
+// Calcul "X clients sur 100" :
+//   - Si mention_rate disponible (% de queries ou la marque est citee
+//     parmi 120 reponses), on l'utilise : missingPct = 100 - mention_rate.
+//     Plus precis car reflete la VRAIE visibility.
+//   - Sinon fallback sur global_score : missingPct = 100 - global_score.
+//
+// Couleurs des 4 mini-scores par IA inchangees (font mono, accent par
+// provider). Count-up animation preservee, juste sur des chiffres
+// differents (la phrase principale + le score secondaire).
 // =====================================================================
 
 type ScoreHeroProps = {
   globalScore: number;
   perProvider: ProviderScore[];
+  // Optionnel : taux de mention reel (0-100). Si fourni, on l'utilise
+  // pour calculer "X clients sur 100" (plus precis que global_score).
+  mentionRate?: number | null;
 };
 
 const toneClass: Record<ScoreTone, string> = {
@@ -33,13 +44,31 @@ const toneClass: Record<ScoreTone, string> = {
 };
 
 const toneGlow: Record<ScoreTone, string> = {
-  low: "drop-shadow-[0_0_32px_rgba(239,68,68,0.25)]",
-  medium: "drop-shadow-[0_0_32px_rgba(245,158,11,0.25)]",
-  high: "drop-shadow-[0_0_32px_rgba(16,185,129,0.25)]",
+  low: "drop-shadow-[0_0_24px_rgba(239,68,68,0.20)]",
+  medium: "drop-shadow-[0_0_24px_rgba(245,158,11,0.20)]",
+  high: "drop-shadow-[0_0_24px_rgba(16,185,129,0.20)]",
 };
 
-export function ScoreHero({ globalScore, perProvider }: ScoreHeroProps) {
+export function ScoreHero({
+  globalScore,
+  perProvider,
+  mentionRate,
+}: ScoreHeroProps) {
   const tone = scoreTone(globalScore);
+
+  // Pourcentage "ne vous trouvent pas" : prefere mention_rate si dispo,
+  // sinon retombe sur 100 - global_score. Clamp 0-100 par securite.
+  const missingPct = (() => {
+    if (typeof mentionRate === "number" && Number.isFinite(mentionRate)) {
+      return Math.max(0, Math.min(100, Math.round(100 - mentionRate)));
+    }
+    return Math.max(0, Math.min(100, Math.round(100 - globalScore)));
+  })();
+  const findingPct = 100 - missingPct;
+  // Tone du chiffre principal : on suit la meme logique que scoreTone
+  // mais inversee — si BEAUCOUP de clients perdus, c'est rouge.
+  const missingTone: ScoreTone =
+    missingPct >= 60 ? "low" : missingPct >= 30 ? "medium" : "high";
 
   return (
     <section
@@ -50,34 +79,61 @@ export function ScoreHero({ globalScore, perProvider }: ScoreHeroProps) {
         id="score-hero-label"
         className="text-xs sm:text-sm font-medium uppercase tracking-[0.2em] text-ankora-text-muted"
       >
-        Votre score AI Visibility
+        Votre visibilité IA
       </p>
 
-      {/* Score geant */}
-      <div className="mt-6 flex items-end justify-center gap-2 sm:gap-3 leading-none">
-        <CountUpNumber
-          to={globalScore}
-          durationMs={1500}
-          ariaLabel={`Score : ${Math.round(globalScore)} sur 100`}
-          className={cn(
-            "font-display font-bold tracking-tight tabular-nums",
-            "text-7xl sm:text-8xl md:text-9xl",
-            toneClass[tone],
-            toneGlow[tone]
-          )}
-        />
+      {/* Phrase business principale */}
+      <h2 className="mt-5 max-w-3xl mx-auto font-display text-3xl sm:text-4xl md:text-5xl font-bold leading-[1.1] tracking-tight text-ankora-ink">
         <span
           className={cn(
-            "font-display font-semibold text-3xl sm:text-4xl md:text-5xl pb-2 sm:pb-3 md:pb-4",
-            "text-ankora-text-muted"
+            "font-display font-bold tabular-nums",
+            toneClass[missingTone],
+            toneGlow[missingTone]
           )}
-          aria-hidden="true"
         >
+          <CountUpNumber
+            to={missingPct}
+            durationMs={1500}
+            ariaLabel={`${missingPct} clients sur 100 ne vous trouvent pas`}
+          />
+        </span>{" "}
+        clients sur 100 qui vous cherchent via une IA
+        {" "}
+        <span className={toneClass[missingTone]}>ne vous trouvent pas</span>.
+      </h2>
+
+      {/* Sous-ligne pedagogique : equilibre du chiffre */}
+      <p className="mt-4 text-base sm:text-lg text-ankora-text-soft">
+        Sur 100 personnes qui cherchent votre type d&apos;activité,{" "}
+        <span className="font-semibold text-ankora-text">
+          {findingPct} vous trouvent
+        </span>{" "}
+        et{" "}
+        <span className="font-semibold text-ankora-text">
+          {missingPct} vont chez un concurrent
+        </span>
+        .
+      </p>
+
+      {/* Score IA secondaire — pour les curieux. Plus petit qu'avant */}
+      <div className="mt-8 inline-flex items-baseline gap-1.5 rounded-2xl border border-ankora-border bg-card/60 px-4 py-2">
+        <span className="text-[10px] font-semibold uppercase tracking-wider text-ankora-text-muted">
+          Score IA
+        </span>
+        <span
+          className={cn(
+            "font-display font-bold tabular-nums text-2xl sm:text-3xl",
+            toneClass[tone]
+          )}
+        >
+          <CountUpNumber to={globalScore} durationMs={1500} delayMs={300} />
+        </span>
+        <span className="font-display text-base text-ankora-text-muted">
           /100
         </span>
       </div>
 
-      {/* Mini-scores par IA */}
+      {/* Mini-scores par IA — inchanges, gardent leur role d'ancrage serieux */}
       <ul
         className="mt-10 grid grid-cols-2 sm:grid-cols-4 gap-4 sm:gap-6 max-w-2xl mx-auto"
         aria-label="Scores détaillés par IA"

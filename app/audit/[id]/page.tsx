@@ -148,10 +148,11 @@ export default async function AuditReportPage({
         region={report.region}
       />
 
-      {/* Bloc 1 — Score géant + sous-scores par IA */}
+      {/* Bloc 1 — Phrase business-first + score IA secondaire + sous-scores par IA */}
       <ScoreHero
         globalScore={report.global_score}
         perProvider={report.per_provider}
+        mentionRate={report.mention_rate}
       />
 
       {/* Bloc 2 — Verdict en 1 phrase */}
@@ -164,11 +165,14 @@ export default async function AuditReportPage({
         brandMentionsCount={report.brand_mentions_count}
       />
 
-      {/* Bloc 3 — Perte chiffrée */}
+      {/* Bloc 3 — Manque à gagner (narrative ville + secteur + ratio 33/67) */}
       <LostOpportunities
         globalScore={report.global_score}
         totalQueries={report.total_queries}
         brandMentionsCount={report.brand_mentions_count}
+        cityMain={report.city_main}
+        city={report.city}
+        industry={report.industry}
       />
 
       {/* Bloc 4 — Top 3 concurrents (podium + VOUS) */}

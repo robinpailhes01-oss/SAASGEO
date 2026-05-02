@@ -381,6 +381,7 @@ export async function getReport(auditId: string): Promise<ReportData | null> {
   let total_responses = 0;
   let brand_mentions_count = 0;
   let top_competitors: CompetitorRanking[] = [];
+  let city_main_platforms_above_brand: CompetitorRanking[] = [];
   let your_mentions_count = 0;
   let samples: AIResponseSample[] = [];
 
@@ -468,6 +469,86 @@ export async function getReport(auditId: string): Promise<ReportData | null> {
     // de reponses (sur les 120 = 30 queries x 4 IA) ou la marque est
     // citee. Identique a brand_mentions_count.
     your_mentions_count = brand_mentions_count;
+
+    // ----- Plateformes qui depassent la marque sur city_main -----
+    // Probleme observe : Harmonie Yacht peut etre 1er du podium TOTAL
+    // (mentions toutes requetes confondues) tout en etant absent des
+    // requetes city_main (Montpellier) ou les plateformes nationales
+    // (Click&Boat, SamBoat, Booking) raflent tout. On expose donc
+    // explicitement ces plateformes au-dessous du podium pour
+    // contextualiser le score Hero qui dirait "58 sur 100 ne vous
+    // trouvent pas" alors meme que le podium dirait "VOUS 1er".
+    //
+    // Algorithme :
+    //   1. Filtrer les responses dont la query mentionne city_main
+    //      (matching simple includes, casse-insensible).
+    //   2. Compter brand_mentions_on_city_main vs competitor mentions.
+    //   3. Identifier les competitors avec mentions > brand sur ce
+    //      sous-ensemble, hors top 3 podium (pour eviter les doublons).
+    //   4. Top 3 par mentions desc.
+    if (business?.city_main && business.city_main.trim()) {
+      const cityMainKey = business.city_main.toLowerCase().trim();
+      const cityMainQueryIds = new Set(
+        Array.from(queriesById.values())
+          .filter((q) => q.text.toLowerCase().includes(cityMainKey))
+          .map((q) => q.id)
+      );
+      if (cityMainQueryIds.size > 0) {
+        const cityMainAnalyses = analyses.filter((a) => {
+          const resp = responsesById.get(a.response_id);
+          return resp && cityMainQueryIds.has(resp.query_id);
+        });
+        const brandOnCityMain = cityMainAnalyses.filter(
+          (a) => a.brand_mentioned
+        ).length;
+
+        // Aggregation specifique city_main
+        const cityMainCompAgg = new Map<
+          string,
+          { displayName: string; count: number }
+        >();
+        for (const a of cityMainAnalyses) {
+          for (const raw of a.competitors_cited ?? []) {
+            if (!raw || typeof raw !== "string") continue;
+            const key = normalizeCompetitorKey(raw);
+            if (!key) continue;
+            const existing = cityMainCompAgg.get(key);
+            if (existing) {
+              existing.count += 1;
+            } else {
+              cityMainCompAgg.set(key, {
+                displayName: raw.trim(),
+                count: 1,
+              });
+            }
+          }
+        }
+
+        const podiumKeys = new Set(
+          top_competitors.map((c) => normalizeCompetitorKey(c.name))
+        );
+        const totalCityMainResponses = cityMainAnalyses.length || 1;
+
+        city_main_platforms_above_brand = [...cityMainCompAgg.entries()]
+          .filter(([key, v]) => {
+            // Garde uniquement les concurrents > marque sur ce sous-ensemble
+            if (v.count <= brandOnCityMain) return false;
+            // Exclut les concurrents deja dans le podium total
+            if (podiumKeys.has(key)) return false;
+            return true;
+          })
+          .map(([, v]) => v)
+          .sort((a, b) => b.count - a.count)
+          .slice(0, 3)
+          .map((c) => ({
+            name: c.displayName,
+            mentions: c.count,
+            pct_of_queries: Math.round(
+              (c.count / totalCityMainResponses) * 100
+            ),
+          }));
+      }
+    }
 
     // ----- Selection des apercus IA (Phase D.2 - bloc 5) -----
     // Strategie :
@@ -631,6 +712,7 @@ export async function getReport(auditId: string): Promise<ReportData | null> {
     total_responses,
     brand_mentions_count,
     top_competitors,
+    city_main_platforms_above_brand,
     your_mentions_count,
     samples,
     why_reasons,

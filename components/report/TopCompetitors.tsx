@@ -31,6 +31,13 @@ type TopCompetitorsProps = {
   brandName: string;
   yourMentions: number; // mentions sur 120 (= totalQueries * 4)
   totalQueries: number;
+  // Localisation pour sous-titre contextualise
+  cityMain?: string | null;
+  // Plateformes/concurrents qui depassent la marque sur city_main —
+  // affichees en bandeau secondaire pour expliquer pourquoi le Hero
+  // dit "X clients ne vous trouvent pas" alors que VOUS etes 1er
+  // du podium total. Cf. get-report.ts city_main_platforms_above_brand.
+  cityMainPlatformsAboveBrand?: CompetitorRanking[];
 };
 
 const MEDALS = ["🥇", "🥈", "🥉"] as const;
@@ -128,6 +135,8 @@ export function TopCompetitors({
   brandName,
   yourMentions,
   totalQueries,
+  cityMain,
+  cityMainPlatformsAboveBrand = [],
 }: TopCompetitorsProps) {
   const reduce = useReducedMotion();
 
@@ -153,11 +162,14 @@ export function TopCompetitors({
           id="top-competitors-label"
           className="text-xs sm:text-sm font-medium uppercase tracking-[0.2em] text-ankora-text-muted"
         >
-          Classement de visibilité dans les IA
+          {cityMain
+            ? `Classement parmi les acteurs détectés autour de ${cityMain}`
+            : "Classement de visibilité dans les IA"}
         </p>
         <p className="mt-2 text-base text-ankora-text-soft">
-          Voici qui apparaît le plus quand vos clients posent des questions
-          à ChatGPT, Claude, Perplexity ou Gemini.
+          {cityMain
+            ? `Voici qui apparaît le plus dans les réponses IA pour les recherches autour de ${cityMain} et de votre activité.`
+            : "Voici qui apparaît le plus quand vos clients posent des questions à ChatGPT, Claude, Perplexity ou Gemini."}
         </p>
       </div>
 
@@ -279,6 +291,46 @@ export function TopCompetitors({
           </>
         )}
       </p>
+
+      {/* Bandeau plateformes nationales — affiche uniquement si on a
+          identifie des concurrents qui depassent la marque sur les
+          recherches city_main (ex: Click&Boat sur "yacht Montpellier").
+          Ce bandeau resout l'incoherence apparente "VOUS 1er du podium
+          mais X clients ne vous trouvent pas dans le Hero" : le podium
+          mesure le total, ces plateformes captent les vraies grosses
+          requetes que la marque rate. */}
+      {cityMainPlatformsAboveBrand.length > 0 && cityMain ? (
+        <motion.aside
+          initial={reduce ? false : { opacity: 0, y: 8 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: "0px 0px -120px 0px" }}
+          transition={{ duration: 0.5, ease: "easeOut" }}
+          className="rounded-2xl border border-warning/30 bg-warning/5 p-4 sm:p-5"
+          aria-label="Plateformes nationales"
+        >
+          <p className="text-xs font-semibold uppercase tracking-wider text-warning">
+            Sur les plateformes à fort volume
+          </p>
+          <p className="mt-2 text-sm sm:text-base text-ankora-text leading-relaxed">
+            {cityMainPlatformsAboveBrand.map((p, i) => (
+              <React.Fragment key={p.name}>
+                <span className="font-display font-semibold text-ankora-text">
+                  {p.name}
+                </span>
+                <span className="font-mono text-ankora-text-muted">
+                  {" "}({p.mentions})
+                </span>
+                {i < cityMainPlatformsAboveBrand.length - 1 ? ", " : ""}
+              </React.Fragment>
+            ))}{" "}
+            vous{" "}
+            {cityMainPlatformsAboveBrand.length === 1 ? "dépasse" : "dépassent"}{" "}
+            sur les recherches{" "}
+            <span className="font-semibold text-ankora-text">{cityMain}</span>{" "}
+            où concentrent les clients à fort volume.
+          </p>
+        </motion.aside>
+      ) : null}
     </section>
   );
 }

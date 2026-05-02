@@ -181,6 +181,8 @@ export default async function AuditReportPage({
         brandName={report.brand_name}
         yourMentions={report.your_mentions_count}
         totalQueries={report.total_queries}
+        cityMain={report.city_main}
+        cityMainPlatformsAboveBrand={report.city_main_platforms_above_brand}
       />
 
       {/* Bloc 5 — Aperçu en direct d'une réponse IA (le wow ultime) */}

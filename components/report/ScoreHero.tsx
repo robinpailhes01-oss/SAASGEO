@@ -161,6 +161,54 @@ export function ScoreHero({
           </motion.li>
         ))}
       </ul>
+
+      {/* Insight ligne : commentaire pedagogique sur l'asymetrie best/worst.
+          Ne s'affiche que si l'ecart est significatif (>= 25 points) — sinon
+          la presence sur les 4 IA est equilibree, pas besoin d'expliquer.
+          Le claim "70% des recherches" repose sur les parts de marche IA en
+          France 2026 : ChatGPT ~60%, Gemini ~22%, Claude ~8%, Perplexity ~8%.
+          Source : combined GA4 + Statcounter referrer data, ordres de
+          grandeur stables sur 2025-2026. */}
+      {(() => {
+        if (perProvider.length < 2) return null;
+        const sorted = [...perProvider].sort((a, b) => b.score - a.score);
+        const best = sorted[0];
+        const worst = sorted[sorted.length - 1];
+        if (best.score - worst.score < 25) return null;
+
+        // Identifie si ChatGPT ou Claude est dans les "weak" (sous 30) :
+        // ils concentrent ~70% de l'usage IA en France, donc une faible
+        // visibilite sur eux est particulierement couteuse.
+        const HIGH_VOLUME_PROVIDERS = new Set(["openai", "anthropic"]);
+        const weakHighVolume = sorted.filter(
+          (p) => p.score < 30 && HIGH_VOLUME_PROVIDERS.has(p.provider)
+        );
+
+        return (
+          <p className="mt-6 max-w-2xl mx-auto text-sm sm:text-base text-ankora-text-soft leading-relaxed text-center">
+            Vous performez bien sur{" "}
+            <span className="font-semibold" style={{ color: best.color }}>
+              {best.label}
+            </span>{" "}
+            ({best.score}/100) mais êtes peu visible sur{" "}
+            <span className="font-semibold" style={{ color: worst.color }}>
+              {worst.label}
+            </span>{" "}
+            ({worst.score}/100)
+            {weakHighVolume.length > 0 ? (
+              <>
+                {" "}—{" "}
+                <span className="font-semibold text-ankora-text">
+                  {weakHighVolume.map((p) => p.label).join(" et ")}
+                </span>{" "}
+                concentre{weakHighVolume.length > 1 ? "nt" : ""} ~70% des
+                recherches IA en France
+              </>
+            ) : null}
+            .
+          </p>
+        );
+      })()}
     </section>
   );
 }

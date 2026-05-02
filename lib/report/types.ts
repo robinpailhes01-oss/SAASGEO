@@ -91,6 +91,15 @@ export type ReportData = {
 
   // -- Phase D.2 : top 3 concurrents + apercus IA --
   top_competitors: CompetitorRanking[]; // 0..3 entrees
+  // Plateformes/concurrents qui DEPASSENT la marque sur les requetes
+  // mentionnant city_main (Montpellier dans l'exemple Carnon). Ce sont
+  // typiquement des plateformes nationales (Click&Boat, SamBoat,
+  // Booking.com) qui captent les requetes a fort volume — alors que
+  // le podium principal ci-dessus reflete le classement TOTAL
+  // (toutes requetes confondues). Exclut deja les noms du top 3 podium
+  // pour eviter les doublons. Vide si city_main absent ou si la marque
+  // domine deja sur city_main.
+  city_main_platforms_above_brand: CompetitorRanking[]; // 0..3 entrees
   // Nombre de reponses IA (sur total_queries * 4 = 120) ou la marque
   // est mentionnee. MEME base que competitor.mentions pour assurer
   // une comparaison juste sur le podium TopCompetitors. Avant cette

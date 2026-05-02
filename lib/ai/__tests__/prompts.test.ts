@@ -169,6 +169,65 @@ describe("prompts/synthesis", () => {
     expect(prompt).toContain("8.3%");
   });
 
+  it("REGRESSION : injecte les opportunites manquees pour personnalisation", () => {
+    const { prompt, system } = buildSynthesisPrompt({
+      brand_name: "Hotel Neptune",
+      industry: "Hotellerie",
+      city: "Carnon",
+      region: "Hérault",
+      technical_score: 60,
+      visibility_score: 50,
+      visibility_per_provider: { openai: 50, anthropic: 50, perplexity: 50, gemini: 50 },
+      mention_rate: 25,
+      citation_rate: 5,
+      top_competitors_observed: ["Domaine de Verchant", "Hotel de la Plage"],
+      failed_tech_checks: [],
+      passed_tech_checks_count: 40,
+      total_tech_checks: 51,
+      missed_opportunities: [
+        {
+          query: "hotel romantique Carnon",
+          category: "service",
+          provider: "openai",
+          competitors_cited: ["Hotel de la Plage", "Domaine de Verchant"],
+        },
+        {
+          query: "meilleur hotel 4 etoiles Hérault",
+          category: "comparative",
+          provider: "anthropic",
+          competitors_cited: ["Domaine de Verchant"],
+        },
+      ],
+    });
+    // Le block OPPORTUNITES MANQUEES est present
+    expect(prompt).toContain("OPPORTUNITES MANQUEES");
+    expect(prompt).toContain("hotel romantique Carnon");
+    expect(prompt).toContain("Hotel de la Plage");
+    // City injectee
+    expect(prompt).toContain("Carnon");
+    expect(prompt).toContain("Hérault");
+    // System prompt rappelle l'interdit generique
+    expect(system).toContain("PERSONNALISEES");
+    expect(system).toContain("INTERDIT");
+  });
+
+  it("ne casse pas si missed_opportunities absent (compat retro)", () => {
+    const { prompt } = buildSynthesisPrompt({
+      brand_name: "X",
+      industry: null,
+      technical_score: 50,
+      visibility_score: 50,
+      visibility_per_provider: { openai: 50, anthropic: 50, perplexity: 50, gemini: 50 },
+      mention_rate: 50,
+      citation_rate: 50,
+      top_competitors_observed: [],
+      failed_tech_checks: [],
+      passed_tech_checks_count: 51,
+      total_tech_checks: 51,
+    });
+    expect(prompt).not.toContain("OPPORTUNITES MANQUEES");
+  });
+
   it("schema valide une synthese complete", () => {
     const valid = {
       verdict: "Score 25/100, invisible aux IA majeures.",

@@ -167,6 +167,9 @@ export const runAuditFunction = inngest.createFunction(
       );
 
       // -------- Step 6 : Synthesis --------
+      // On passe `responses` pour permettre la generation de
+      // recommandations PERSONNALISEES (qui citent une query manquee
+      // precise + un concurrent reel detecte) plutot que generiques.
       const synthesis = await step.run("synthesis", () =>
         stepSynthesis({
           audit_id,
@@ -177,6 +180,7 @@ export const runAuditFunction = inngest.createFunction(
             visibility_score: scores.visibility_score,
           },
           visibility_scores: visibilityScores,
+          responses: allResponses,
           persist: true,
         })
       );

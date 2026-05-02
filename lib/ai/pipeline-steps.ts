@@ -426,6 +426,13 @@ export async function stepComputeScores(args: {
 
 // =====================================================================
 // Step 6 : Synthese (LLM Sonnet)
+//
+// Responses (optionnel) : si fournies, on derive les "opportunites
+// manquees" — queries ou la marque est absente alors qu'au moins un
+// concurrent du top 5 est cite. Ces exemples concrets sont injectes
+// dans le prompt pour forcer le LLM a generer des recommandations
+// PERSONNALISEES (citent un concurrent reel ou une query precise) au
+// lieu de blabla generique ("ameliorez votre presence").
 // =====================================================================
 export async function stepSynthesis(args: {
   audit_id: string;
@@ -436,6 +443,7 @@ export async function stepSynthesis(args: {
     visibility_score: number;
   };
   visibility_scores: VisibilityScores;
+  responses?: VisibilityResponse[];
   persist: boolean;
 }): Promise<Synthesis> {
   if (args.persist) {
@@ -463,9 +471,52 @@ export async function stepSynthesis(args: {
     }
   }
 
+  // Construction des opportunites manquees pour personnalisation reco.
+  // Strategie : queries ou brand absente + au moins 1 concurrent cite.
+  // Priorise les categories `comparative` > `service` > `branded` (plus
+  // d'intention buying). Limite a 8 exemples (compact pour le prompt).
+  const topCompetitorKeys = new Set(
+    args.visibility_scores.top_competitors
+      .slice(0, 10)
+      .map((c) => c.name.toLowerCase().trim())
+  );
+  const categoryRank: Record<string, number> = {
+    comparative: 0,
+    service: 1,
+    branded: 2,
+  };
+  const missedOpportunities = (args.responses ?? [])
+    .filter((r) => {
+      if (!r.analysis) return false;
+      if (r.analysis.brand_mentioned) return false;
+      if (!r.analysis.competitors_cited?.length) return false;
+      // Privilegie les responses ou un competitor du top est cite
+      return r.analysis.competitors_cited.some((c) =>
+        topCompetitorKeys.has(c.toLowerCase().trim())
+      );
+    })
+    .sort((a, b) => {
+      const ca = categoryRank[a.query_category] ?? 99;
+      const cb = categoryRank[b.query_category] ?? 99;
+      if (ca !== cb) return ca - cb;
+      // Provider preference : openai (ChatGPT) en premier
+      const pa = a.provider === "openai" ? 0 : 1;
+      const pb = b.provider === "openai" ? 0 : 1;
+      return pa - pb;
+    })
+    .slice(0, 8)
+    .map((r) => ({
+      query: r.query_text,
+      category: r.query_category,
+      provider: r.provider as string,
+      competitors_cited: r.analysis!.competitors_cited.slice(0, 3),
+    }));
+
   const { system, prompt } = buildSynthesisPrompt({
     brand_name: args.business.brand_name,
     industry: args.business.industry,
+    city: args.business.city,
+    region: args.business.region,
     technical_score: args.scores.technical_score,
     visibility_score: args.scores.visibility_score,
     visibility_per_provider: args.visibility_scores.per_provider,
@@ -477,6 +528,7 @@ export async function stepSynthesis(args: {
     failed_tech_checks: failedTechChecks,
     passed_tech_checks_count: passedChecks,
     total_tech_checks: totalChecks,
+    missed_opportunities: missedOpportunities,
   });
 
   const model = TASK_MODELS.synthesis;

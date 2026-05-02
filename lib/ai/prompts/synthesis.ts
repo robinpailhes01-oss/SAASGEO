@@ -53,6 +53,10 @@ export type Synthesis = z.infer<typeof SynthesisSchema>;
 interface SynthesisInput {
   brand_name: string;
   industry: string | null;
+  // Localisation pour personnaliser les recommandations (ex: "creez une
+  // page services a Carnon" au lieu de "ameliorez votre presence locale").
+  city?: string | null;
+  region?: string | null;
   technical_score: number;       // /100
   visibility_score: number;      // /100
   visibility_per_provider: Record<string, number>;
@@ -62,20 +66,64 @@ interface SynthesisInput {
   failed_tech_checks: { label: string; recommendation?: string }[];
   passed_tech_checks_count: number;
   total_tech_checks: number;
+  // Opportunites manquees concretes : queries ou la marque est absente
+  // alors qu'au moins un concurrent (idealement du top) est cite.
+  // Le LLM utilise ces exemples pour formuler des recommandations
+  // personnalisees ("Vous ratez 'hotel romantique Carnon' — Domaine
+  // de Verchant y est cite a votre place. Action : ...")
+  missed_opportunities?: Array<{
+    query: string;
+    category: string;     // branded | service | comparative
+    provider: string;     // openai | anthropic | perplexity | gemini
+    competitors_cited: string[];
+  }>;
 }
 
 export function buildSynthesisPrompt(input: SynthesisInput): {
   system: string;
   prompt: string;
 } {
+  const locationLabel = input.city
+    ? `${input.city}${input.region ? `, ${input.region}` : ""}`
+    : input.region ?? null;
+
+  // Block "OPPORTUNITES MANQUEES" — coeur de la personnalisation.
+  // On limite a 8 exemples pour garder le prompt compact (~600-800
+  // tokens supplementaires max).
+  const missedBlock =
+    input.missed_opportunities && input.missed_opportunities.length > 0
+      ? `\n\nOPPORTUNITES MANQUEES (questions ou ${input.brand_name} est ABSENT et un concurrent est CITE) :
+${input.missed_opportunities
+  .slice(0, 8)
+  .map(
+    (m, i) =>
+      `  ${i + 1}. "${m.query}" [${m.category} sur ${m.provider}] — concurrent(s) cite(s) : ${m.competitors_cited.slice(0, 3).join(", ")}`
+  )
+  .join("\n")}
+
+Ces opportunites manquees sont la matiere premiere des recommandations. CHAQUE recommandation doit faire reference soit a une question precise de cette liste, soit a un concurrent reel detecte.`
+      : "";
+
+  const locationBlock = locationLabel
+    ? `\nLocalisation : ${locationLabel}`
+    : "";
+
   return {
-    system: `Tu es un consultant senior en GEO (Generative Engine Optimization) specialise dans le tourisme et l'hotellerie en France.
-Tu produis des verdicts factuels (chiffres a l'appui) et des recommandations concretes, jamais generiques.
+    system: `Tu es un consultant senior en GEO (Generative Engine Optimization) en France.
+Tu produis des verdicts factuels (chiffres a l'appui) et des recommandations PERSONNALISEES — JAMAIS generiques.
+
+REGLES STRICTES POUR LES RECOMMANDATIONS :
+1. Chaque recommandation doit etre directement actionnable par ${input.brand_name} — pas par "tout le monde".
+2. Au moins 3 recommandations sur 5 doivent citer NOMINATIVEMENT un concurrent reel detecte (parmi top_competitors_observed) OU une question precise manquee (parmi missed_opportunities).
+3. INTERDIT : "Ameliorez votre presence", "Optimisez votre SEO", "Travaillez votre marque" — ces formulations vagues sont rejetees.
+4. ACCEPTE : "Creez une page '/sejour-romantique-${locationLabel ?? "[ville]"}' car Hotel de la Plage capte cette requete a votre place sur ChatGPT".
+5. Le titre (max 80 chars) doit etre concret. La description (max 300 chars) doit donner l'action precise + l'argument chiffres ("vous ratez X questions sur 30 sur ce theme").
+
 Tu reponds UNIQUEMENT avec un JSON valide matchant le schema demande.`,
     prompt: `Synthetise l'audit GEO du business suivant :
 
 Marque : ${input.brand_name}
-Secteur : ${input.industry ?? "non precise"}
+Secteur : ${input.industry ?? "non precise"}${locationBlock}
 
 SCORES :
 - Score technique : ${input.technical_score}/100
@@ -88,7 +136,7 @@ ${Object.entries(input.visibility_per_provider)
   .map(([p, s]) => `  - ${p} : ${s}/100`)
   .join("\n")}
 
-CONCURRENTS QUI APPARAISSENT LE PLUS a votre place dans les reponses IA :
+CONCURRENTS QUI APPARAISSENT LE PLUS a la place de ${input.brand_name} dans les reponses IA :
 ${input.top_competitors_observed.length > 0 ? input.top_competitors_observed.slice(0, 5).map((c) => `  - ${c}`).join("\n") : "  (aucun concurrent identifie)"}
 
 CHECKS TECHNIQUES :
@@ -97,24 +145,24 @@ CHECKS TECHNIQUES :
 ${input.failed_tech_checks
   .slice(0, 10)
   .map((c) => `  - ${c.label}${c.recommendation ? ` → ${c.recommendation.slice(0, 100)}` : ""}`)
-  .join("\n")}
+  .join("\n")}${missedBlock}
 
 Format de reponse JSON :
 
 {
   "verdict": "Phrase courte (1-2 lignes) qui resume la situation avec des chiffres. Doit etre brutal et factuel, pas du blabla.",
-  "top_competitor": "string ou null — le concurrent qui ressort le plus",
+  "top_competitor": "string ou null — le concurrent qui ressort le plus a la place de ${input.brand_name}",
   "recommendations": [
     {
       "priority": "quick_win" | "medium" | "long_term",
-      "category": "string courte",
-      "title": "Action courte (max 80 chars)",
-      "description": "Action concrete (max 300 chars). Ne dis pas 'ameliorer le SEO' — dis 'creer un robots.txt avec User-agent: GPTBot Allow: /'",
+      "category": "string courte (ex: 'content', 'authority', 'GEO triptych')",
+      "title": "Action courte et concrete (max 80 chars). Format prefere : 'Vous ratez \\"[query]\\"' OU 'Repondez a [concurrent] sur [theme]'",
+      "description": "Action precise (max 300 chars). Doit citer soit une question manquee, soit un concurrent reel. Format : '[Constat factuel chiffre]. [Action precise et concrete a faire].'",
       "impact_score": 1-10
     }
   ]
 }
 
-Genere entre 5 et 15 recommandations. Quick wins en premier (impact eleve / effort faible). Reponds UNIQUEMENT avec le JSON.`,
+Genere entre 5 et 15 recommandations. Quick wins en premier (impact eleve / effort faible). Au moins 3 recommandations DOIVENT etre personnalisees (citent un concurrent ou une query manquee). Reponds UNIQUEMENT avec le JSON.`,
   };
 }

@@ -70,21 +70,53 @@ export type BusinessInfo = z.infer<typeof BusinessInfoSchema>;
 
 // Construit le prompt complet pour l'extraction.
 // homeText = texte visible scrape de la home (limite a ~3000 chars).
-export function buildBrandExtractPrompt(homeText: string, url: string): {
+// userGeoTarget = ville fournie manuellement par l'utilisateur depuis
+// le formulaire (optionnel). Si present, c'est la verite premiere — le
+// LLM doit l'utiliser pour city/region et set scope='local'.
+export function buildBrandExtractPrompt(
+  homeText: string,
+  url: string,
+  userGeoTarget?: string | null
+): {
   system: string;
   prompt: string;
 } {
+  const hasUserHint =
+    typeof userGeoTarget === "string" && userGeoTarget.trim().length > 0;
+  const hintBlock = hasUserHint
+    ? `\n\nINDICATION UTILISATEUR — VERITE PREMIERE :
+L'utilisateur a explicitement indique sa localisation : "${userGeoTarget!.trim()}".
+- city = cette valeur (parse la ville en debut de chaine si plusieurs elements separes par virgule)
+- region = element apres la virgule si present, sinon deduit du contexte
+- business_scope = "local" (l'utilisateur a confirme une activite locale)
+- geo_zone = la chaine complete fournie
+NE CONTREDIS PAS cette information meme si le site est imprecis.`
+    : "";
+
   return {
     system: `Tu es un analyste business specialise dans l'extraction de donnees structurees depuis des sites d'entreprise francais.
 Reponds UNIQUEMENT avec un objet JSON valide qui matche exactement le schema demande.
 Ne devine pas — si une information n'est pas presente dans le texte, mets null ou un array vide.
 
-Localisation : un dirigeant d'audit GEO a besoin de savoir si le business est ancre localement (Carnon, Hérault) pour generer des questions clients pertinentes ("yacht à Carnon" vs "yacht en Méditerranée"). Lis attentivement les mentions d'adresse, codes postaux, ville dans le footer / page contact / schema.org LocalBusiness. Si tu detectes une adresse claire, remplis city/region/country et mets business_scope = "local". Si pas de localisation precise mais marque francaise nationale (e-commerce, SaaS), mets business_scope = "national". Si presence multi-pays detectee : "international".`,
+Localisation (PRIORITE ABSOLUE) : un dirigeant d'audit GEO a besoin de savoir si le business est ancre localement (Carnon, Hérault) pour generer des questions clients pertinentes ("yacht à Carnon" vs "yacht en Méditerranée"). Sources a parser dans l'ordre :
+  1. Footer (mentions legales, adresse, code postal, ville)
+  2. Page contact / a propos / nous trouver
+  3. Schema.org LocalBusiness / Organization (postalAddress, addressLocality, addressRegion)
+  4. Embeds Google Maps / iframe.google.com/maps
+  5. Mentions explicites dans le texte ("Notre boutique a Lyon", "Situe en plein coeur de Bordeaux")
+  6. Indices secondaires : numero de telephone (indicatif regional), TLD (.fr -> France probable)
+
+Regles de classification business_scope :
+  - "local"         : ville/adresse precise detectee, ou activite physique evidente (restaurant, hotel, boutique, garage, charter, salon de coiffure...)
+  - "national"      : pas d'adresse precise mais marque francaise nationale (e-commerce FR, SaaS FR, marketplace)
+  - "international" : presence multi-pays detectee (.com avec mentions multilingues, multiple currencies)
+
+Si tu detectes une ville, REMPLIS OBLIGATOIREMENT city. Ne te contente pas de country='France' avec city=null — c'est inacceptable et casse l'audit.`,
     prompt: `Voici le contenu textuel de la page d'accueil de ${url} :
 
 ---
 ${homeText.slice(0, 3000)}
----
+---${hintBlock}
 
 Extrais les informations business au format JSON suivant. Sois EXIGEANT sur la localisation : c'est ce qui rendra l'audit credible pour un dirigeant local.
 

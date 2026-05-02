@@ -41,17 +41,43 @@ export const GeneratedQueriesSchema = z.object({
 
 export type GeneratedQueries = z.infer<typeof GeneratedQueriesSchema>;
 
-// Construit la directive geo selon le scope et les champs de localisation.
-// Renvoie un block d'instruction multi-lignes integre au prompt user.
+// Construit la directive geo selon le scope et les champs de
+// localisation. Renvoie un block d'instruction multi-lignes integre
+// au prompt user.
+//
+// SECURITE : on ne laisse JAMAIS un placeholder ("votre ville",
+// "votre region") fuiter dans la directive — un placeholder leak
+// finirait dans une vraie query envoyee aux 4 IA. Si scope='local'
+// mais qu'aucune source de localisation utilisable n'est presente
+// (city, region, geo_zone), on bascule en strategie 'national' et
+// on logge un warning. C'est un bug grave que stepExtractBusiness
+// devrait avoir absorbe via le hint user_geo_target ; cette garde
+// est une derniere ligne de defense.
 function buildGeoStrategy(business: BusinessInfo): string {
   const { business_scope, city, region, country, geo_zone } = business;
 
   if (business_scope === "local") {
-    const cityLabel = city ?? geo_zone ?? "votre ville";
-    const regionLabel = region ?? "votre region/departement";
-    const countryLabel = country ?? "France";
+    // On a besoin AU MOINS d'une chaine geographique non vide.
+    // Priorite : city > region > geo_zone.
+    const localityRaw = city || region || geo_zone || "";
+    const localityClean = localityRaw.trim();
+
+    if (!localityClean) {
+      console.warn(
+        "[queries-gen] business_scope='local' mais aucune localisation utilisable (city/region/geo_zone tous vides) — fallback en strategie nationale pour eviter un placeholder leak."
+      );
+      return buildNationalStrategy(business);
+    }
+
+    // city peut etre null mais region presente -> on pivote sur la region
+    // comme "ville" (cas departement entier). region peut etre null aussi
+    // -> on utilise la meme valeur pour les questions REGIONALES.
+    const cityLabel = (city || region || geo_zone || localityClean).trim();
+    const regionLabel = (region || country || "France").trim();
+    const countryLabel = (country || "France").trim();
+
     return `STRATEGIE GEO — BUSINESS LOCAL :
-Le business est ancre localement a ${cityLabel}${region ? ` (${region})` : ""}${country ? `, ${country}` : ""}. La pertinence du rapport depend de la localisation des questions.
+Le business est ancre localement a ${cityLabel}${region && region !== cityLabel ? ` (${region})` : ""}${country ? `, ${country}` : ""}. La pertinence du rapport depend de la localisation des questions.
 Repartition OBLIGATOIRE pour les 10 questions "service" :
   - 5 questions LOCALES mentionnant explicitement "${cityLabel}" (ex: "meilleur [service] a ${cityLabel}", "[service] a ${cityLabel}")
   - 3 questions REGIONALES mentionnant "${regionLabel}" (ex: "[service] dans ${regionLabel}", "ou trouver [service] en ${regionLabel}")
@@ -60,7 +86,8 @@ Meme repartition pour les 10 questions "comparative" :
   - 5 comparatives LOCALES (ex: "top 3 [services] a ${cityLabel}", "[concurrent local] vs autres [services] ${cityLabel}")
   - 3 comparatives REGIONALES (ex: "alternatives a [concurrent] en ${regionLabel}")
   - 2 comparatives NATIONALES (ex: "top 5 [secteur] en ${countryLabel}")
-Les questions "branded" peuvent rester sans mention geographique (focus marque).`;
+Les questions "branded" peuvent rester sans mention geographique (focus marque).
+INTERDIT : ne genere JAMAIS de question contenant les mots "votre ville", "votre region", "[ville]", "[region]" ou tout placeholder. Utilise EXCLUSIVEMENT les valeurs reelles fournies.`;
   }
 
   if (business_scope === "international") {
@@ -69,11 +96,14 @@ Le business opere sur plusieurs pays. Genere des questions sans ancrage local ma
 Si la langue principale est "fr", garde les questions en francais. Si "en", en anglais.`;
   }
 
-  // national (default)
-  const geoContext =
-    geo_zone ?? country ?? "France";
+  return buildNationalStrategy(business);
+}
+
+function buildNationalStrategy(business: BusinessInfo): string {
+  const geoContext = business.geo_zone || business.country || "France";
   return `STRATEGIE GEO — BUSINESS NATIONAL :
-Le business a une presence nationale (${geoContext}) sans ancrage local marque. Genere des questions sectorielles nationales. Tu PEUX integrer des mentions de regions/villes dans 1-2 questions service ou comparative pour simuler la geolocalisation, mais ne sur-localise pas.`;
+Le business a une presence nationale (${geoContext}) sans ancrage local marque. Genere des questions sectorielles nationales. Tu PEUX integrer des mentions de regions/villes dans 1-2 questions service ou comparative pour simuler la geolocalisation, mais ne sur-localise pas.
+INTERDIT : ne genere JAMAIS de question contenant les mots "votre ville", "votre region" ou tout autre placeholder. Utilise des villes/regions reelles francaises (Paris, Lyon, Marseille, Bordeaux...) ou pas de mention geographique du tout.`;
 }
 
 export function buildQueriesGenPrompt(business: BusinessInfo): {

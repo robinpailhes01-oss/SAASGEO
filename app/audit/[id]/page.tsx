@@ -30,6 +30,7 @@ import { Verdict } from "@/components/report/Verdict";
 import { LostOpportunities } from "@/components/report/LostOpportunities";
 import { TopCompetitors } from "@/components/report/TopCompetitors";
 import { AIResponsePreview } from "@/components/report/AIResponsePreview";
+import { LocationWarning } from "@/components/report/LocationWarning";
 import { WhyInvisible } from "@/components/report/WhyInvisible";
 import { PriorityActions } from "@/components/report/PriorityActions";
 import { UrgencyReminder } from "@/components/report/UrgencyReminder";
@@ -139,6 +140,14 @@ export default async function AuditReportPage({
   // ---- Status === "done" : on rend le rapport ----
   return (
     <ReportLayout>
+      {/* Bandeau warning localisation — visible UNIQUEMENT si scope=local
+          mais sans city/region detectees. CTA pour relancer avec saisie. */}
+      <LocationWarning
+        scope={report.business_scope}
+        city={report.city}
+        region={report.region}
+      />
+
       {/* Bloc 1 — Score géant + sous-scores par IA */}
       <ScoreHero
         globalScore={report.global_score}

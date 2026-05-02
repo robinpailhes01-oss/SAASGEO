@@ -25,6 +25,7 @@ import {
   type BusinessInfo,
 } from "./prompts/brand-extract";
 import type { QueryIdMap } from "./query-id-map";
+import { parseUserGeoTarget } from "./geo-target";
 import {
   buildQueriesGenPrompt,
   GeneratedQueriesSchema,
@@ -87,12 +88,24 @@ export async function stepTechAudit(args: {
 
 // =====================================================================
 // Step 2 : Extraction business info (LLM Haiku)
+//
+// `user_geo_target` est la ville fournie manuellement par l'utilisateur
+// depuis le formulaire d'audit (audits.geo_target). Si presente, c'est
+// une SOURCE AUTORITAIRE :
+//   - injectee comme hint dans le prompt LLM ("verite premiere")
+//   - override apres parse : on impose city/region/business_scope='local'
+//     meme si le LLM a renvoye autre chose
+// Cette logique evite que la detection foire silencieusement (cas
+// principal observe en prod sur Harmonie Yacht ou le LLM Haiku
+// renvoyait country='France' sans city, ce qui faisait fuir le
+// placeholder "votre ville" dans les queries generees).
 // =====================================================================
 export async function stepExtractBusiness(args: {
   audit_id: string;
   url: string;
   technical: TechAuditResult;
   persist: boolean;
+  user_geo_target?: string | null;
 }): Promise<BusinessInfo> {
   if (args.persist) {
     await updateAuditStatus({
@@ -107,7 +120,12 @@ export async function stepExtractBusiness(args: {
   const $ = loadHtml(fetchResult.html);
   const text = extractVisibleText($).slice(0, 3000);
 
-  const { system, prompt } = buildBrandExtractPrompt(text, args.url);
+  const userHint =
+    typeof args.user_geo_target === "string" && args.user_geo_target.trim()
+      ? args.user_geo_target.trim()
+      : null;
+
+  const { system, prompt } = buildBrandExtractPrompt(text, args.url, userHint);
   const model = TASK_MODELS.brand_extraction;
   const result = await generateText(model, {
     system,
@@ -147,6 +165,22 @@ export async function stepExtractBusiness(args: {
       business_scope: "national",
       detected_competitors: [],
       language: "fr",
+    };
+  }
+
+  // Override autoritaire : si l'utilisateur a saisi une ville, on
+  // remplace city/region/business_scope/geo_zone meme si le LLM a
+  // renvoye autre chose (ex : LLM a vu "Hérault" mais user a precise
+  // "Carnon, Hérault" -> on garde la version user, plus fine).
+  if (userHint) {
+    const parsed = parseUserGeoTarget(userHint);
+    business = {
+      ...business,
+      city: parsed.city,
+      region: parsed.region ?? business.region,
+      country: business.country ?? "France",
+      geo_zone: business.geo_zone ?? userHint,
+      business_scope: "local",
     };
   }
 
@@ -202,6 +236,26 @@ export async function stepGenerateQueries(args: {
   });
 
   const parsed = GeneratedQueriesSchema.parse(JSON.parse(result.text));
+
+  // Filet de securite : detecte si le LLM a ressorti un placeholder
+  // litteral ("votre ville", "[ville]", etc.) malgre l'instruction
+  // INTERDIT du prompt. Si oui, on logge un warning visible — utile
+  // pour reperer une regression du prompt sans casser l'audit.
+  // Le rapport montrera des questions inadaptees ; mieux vaut le
+  // savoir cote logs que silencieux.
+  const PLACEHOLDER_RE =
+    /\b(votre ville|votre region|votre département|\[ville\]|\[region\]|\[city\]|\[location\])\b/i;
+  const allQueriesText = [
+    ...parsed.branded,
+    ...parsed.service,
+    ...parsed.comparative,
+  ];
+  const offending = allQueriesText.filter((q) => PLACEHOLDER_RE.test(q));
+  if (offending.length > 0) {
+    console.warn(
+      `[stepGenerateQueries] WARN ${offending.length} queries contiennent un placeholder geo non substitue : ${JSON.stringify(offending.slice(0, 3))}`
+    );
+  }
 
   const queries: VisibilityQuery[] = [];
   let pos = 1;

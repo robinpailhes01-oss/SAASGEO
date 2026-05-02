@@ -88,8 +88,19 @@ export const runAuditFunction = inngest.createFunction(
       );
 
       // -------- Step 2 : Extract business --------
+      // On passe geo_target (saisi par l'utilisateur depuis le
+      // formulaire) comme source autoritaire pour la localisation.
+      // Si present, le pipeline force business_scope='local' et
+      // utilise cette valeur pour city/region — meme si le LLM
+      // Haiku ne detecte rien depuis le HTML.
       const business = await step.run("extract-business", () =>
-        stepExtractBusiness({ audit_id, url, technical, persist: true })
+        stepExtractBusiness({
+          audit_id,
+          url,
+          technical,
+          persist: true,
+          user_geo_target: geo_target,
+        })
       );
 
       // -------- Step 3 : Generate queries --------

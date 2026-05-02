@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Sparkles, Loader2, ShieldCheck, Zap, Heart } from "lucide-react";
+import { Sparkles, Loader2, ShieldCheck, Zap, Heart, MapPin } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,6 +20,15 @@ import { cn } from "@/lib/utils";
 //   - Bouton desactive si URL invalide (apres premiere saisie).
 //   - Au submit : POST /api/audits, redirige vers /audit/[id]/progress.
 //   - Erreurs API -> toast clair selon le code retourne par le backend.
+//
+// Champ "Ville" optionnel (Phase localisation) :
+//   80% des prospects sont des PME locales. La detection LLM des
+//   adresses depuis le HTML est fiable a ~60% (footer / contact /
+//   schema.org parfois absents). Pour garantir 100% de fiabilite, on
+//   permet a l'utilisateur de saisir directement sa ville. La valeur
+//   est envoyee via le champ `geo_target` deja accepte par l'API.
+//   Le pipeline Inngest l'utilisera comme source autoritaire (override
+//   le LLM si different) et basculera business_scope='local'.
 //
 // Le formulaire est mobile-first : champ + bouton empiles en colonne
 // sur petits ecrans, alignes en ligne sur desktop (sm:flex-row).
@@ -47,6 +56,7 @@ function pickErrorMessage(payload: ApiError): string {
 export function HeroAuditForm({ className }: { className?: string }) {
   const router = useRouter();
   const [value, setValue] = React.useState("");
+  const [city, setCity] = React.useState("");
   const [touched, setTouched] = React.useState(false);
   const [submitting, setSubmitting] = React.useState(false);
 
@@ -75,10 +85,20 @@ export function HeroAuditForm({ className }: { className?: string }) {
 
     setSubmitting(true);
     try {
+      // Le champ ville est optionnel : si rempli, on l'envoie en
+      // geo_target (champ deja accepte par /api/audits depuis le debut).
+      const trimmedCity = city.trim();
+      const body: { url: string; geo_target?: string } = {
+        url: validation.url,
+      };
+      if (trimmedCity) {
+        body.geo_target = trimmedCity;
+      }
+
       const res = await fetch("/api/audits", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ url: validation.url }),
+        body: JSON.stringify(body),
       });
 
       const data = (await res.json().catch(() => ({}))) as
@@ -144,6 +164,35 @@ export function HeroAuditForm({ className }: { className?: string }) {
             </>
           )}
         </Button>
+      </div>
+
+      {/* Champ ville optionnel — discret mais utile pour les commerces locaux */}
+      <div className="mt-3">
+        <div className="relative">
+          <MapPin
+            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-ankora-text-muted"
+            aria-hidden="true"
+          />
+          <Input
+            type="text"
+            name="city"
+            placeholder="Ville (optionnel) — ex: Paris, Lyon, Carnon…"
+            value={city}
+            onChange={(e) => setCity(e.target.value)}
+            disabled={submitting}
+            maxLength={120}
+            autoComplete="address-level2"
+            className="h-12 pl-9 text-sm sm:rounded-xl"
+            aria-describedby="audit-city-help"
+          />
+        </div>
+        <p
+          id="audit-city-help"
+          className="mt-1.5 text-xs text-ankora-text-muted text-center sm:text-left"
+        >
+          Recommandé si vous êtes un commerce local — améliore fortement
+          la pertinence de l&apos;audit.
+        </p>
       </div>
 
       {showError && validation && !validation.ok && (

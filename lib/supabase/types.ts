@@ -422,6 +422,7 @@ export type Database = {
           created_at: string
           id: string
           position: number
+          source: string
           text: string
         }
         Insert: {
@@ -430,6 +431,7 @@ export type Database = {
           created_at?: string
           id?: string
           position: number
+          source?: string
           text: string
         }
         Update: {
@@ -438,6 +440,7 @@ export type Database = {
           created_at?: string
           id?: string
           position?: number
+          source?: string
           text?: string
         }
         Relationships: []

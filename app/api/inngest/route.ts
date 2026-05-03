@@ -13,8 +13,9 @@
 import { serve } from "inngest/next";
 import { inngest } from "@/inngest/client";
 import { runAuditFunction } from "@/inngest/functions/run-audit";
+import { runManualQueriesFunction } from "@/inngest/functions/run-manual-queries";
 
 export const { GET, POST, PUT } = serve({
   client: inngest,
-  functions: [runAuditFunction],
+  functions: [runAuditFunction, runManualQueriesFunction],
 });

@@ -38,6 +38,8 @@ import { MainCta } from "@/components/report/MainCta";
 import { ChallengeCompetitor } from "@/components/report/ChallengeCompetitor";
 import { EmailCapture } from "@/components/report/EmailCapture";
 import { PoweredByAnkora } from "@/components/report/PoweredByAnkora";
+import { ManualQueries } from "@/components/report/ManualQueries";
+import { getManualQueries } from "@/lib/report/get-manual-queries";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 
@@ -211,6 +213,23 @@ export default async function AuditReportPage({
 
       {/* Bloc 8 — Rappel d'urgence (ou de leadership selon score) */}
       <UrgencyReminder globalScore={report.global_score} />
+
+      {/* Bloc 8.5 — Questions personnalisees (3 max, gratuit, isole du score) */}
+      <ManualQueries
+        auditId={report.audit_id}
+        industry={report.industry}
+        cityMain={report.city_main}
+        city={report.city}
+        brandName={report.brand_name}
+        initial={
+          (await getManualQueries(report.audit_id)) ?? {
+            count: 0,
+            remaining: 3,
+            queries: [],
+            pending: false,
+          }
+        }
+      />
 
       {/* Bloc 9 — CTA principal (Calendly ou mailto fallback) */}
       <MainCta

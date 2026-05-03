@@ -122,6 +122,44 @@ export function scoreTone(score: number): ScoreTone {
 }
 
 // =====================================================================
+// Phase manual-queries — requetes ajoutees manuellement par le client
+// apres avoir vu le rapport. Max 3 par audit, isolees du score officiel.
+// =====================================================================
+
+// Limite stricte cote API + UI. Ne pas augmenter sans repenser
+// le caveat anti-biais et le coût (~0.027 € par query supplementaire).
+export const MANUAL_QUERIES_MAX = 3;
+
+// Resultat d'une query manuelle apres processing par les 4 IA. PAS de
+// score agrege — on affiche brut par IA (oui/non + concurrents) pour
+// eviter de donner au client un chiffre biaise a brandir.
+export type ManualQueryResult = {
+  query_id: string;
+  query_text: string;
+  // Si true : query inseree mais analyses pas encore completes (polling).
+  pending: boolean;
+  // 0 a 4 entrees (une par IA qui a deja repondu)
+  responses: Array<{
+    provider: AIProvider;
+    provider_label: string;
+    provider_color: string;
+    brand_mentioned: boolean;
+    competitors_cited: string[];
+    response_preview: string;  // tronque ~200 chars
+    response_full: string;
+  }>;
+};
+
+// Payload renvoye par GET /api/audits/[id]/manual-queries.
+export type ManualQueriesPayload = {
+  count: number;            // 0..3
+  remaining: number;        // MANUAL_QUERIES_MAX - count
+  queries: ManualQueryResult[];
+  // True tant qu'au moins une query n'a pas ses 4 analyses.
+  pending: boolean;
+};
+
+// =====================================================================
 // Phase D.2 — Top 3 concurrents + apercus de reponses IA
 // =====================================================================
 

@@ -21,6 +21,18 @@ export interface AuditRequestedEvent {
   };
 }
 
+// Event emis par POST /api/audits/[id]/manual-queries apres l'insertion
+// des queries source='user'. La fonction Inngest associee fait visibility
+// tracking + analyses pour ces query_ids uniquement, SANS re-calcul du
+// score officiel (cf. brief manual queries / anti-biais).
+export interface ManualQueriesAddedEvent {
+  name: "audit/manual-queries-added";
+  data: {
+    audit_id: string;
+    query_ids: string[];
+  };
+}
+
 export const inngest = new Inngest({
   id: "ankora",
 });

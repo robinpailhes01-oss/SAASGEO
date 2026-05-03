@@ -53,6 +53,9 @@ interface AuditRequestedPayload {
   audit_id: string;
   url: string;
   geo_target?: string | null;
+  // Mots-cles client (audits.keywords) injectes dans queries-gen.
+  // Optionnel — si vide, comportement original generique par secteur.
+  keywords?: string[];
 }
 
 // Type minimal pour le step de Inngest. On evite d'importer le type
@@ -73,7 +76,7 @@ export const runAuditFunction = inngest.createFunction(
     triggers: [{ event: "audit/requested" }],
   },
   async ({ event, step }: { event: { data: AuditRequestedPayload }; step: InngestStep }) => {
-    const { audit_id, url, geo_target } = event.data;
+    const { audit_id, url, geo_target, keywords } = event.data;
 
     try {
       // Budget check : wrap dans step.run() pour ne tourner qu'une fois
@@ -105,7 +108,12 @@ export const runAuditFunction = inngest.createFunction(
 
       // -------- Step 3 : Generate queries --------
       const queriesResult = await step.run("generate-queries", () =>
-        stepGenerateQueries({ audit_id, business, persist: true })
+        stepGenerateQueries({
+          audit_id,
+          business,
+          persist: true,
+          keywords: keywords && keywords.length > 0 ? keywords : undefined,
+        })
       );
 
       // -------- Step 4 : Visibility tracking — fan-out 4 providers en parallele --------

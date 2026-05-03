@@ -60,8 +60,16 @@ export const runManualQueriesFunction = inngest.createFunction(
     event: { data: ManualQueriesAddedPayload };
     step: InngestStep;
   }) => {
+    const t0 = Date.now();
     const { audit_id, query_ids } = event.data;
+    console.log(
+      `[run-manual-queries] START audit=${audit_id} query_ids=[${query_ids?.join(",")}]`
+    );
+
     if (!audit_id || !Array.isArray(query_ids) || query_ids.length === 0) {
+      console.warn(
+        `[run-manual-queries] empty payload — abort. audit=${audit_id} ids=${JSON.stringify(query_ids)}`
+      );
       return { success: false, reason: "empty_payload" };
     }
 
@@ -82,15 +90,19 @@ export const runManualQueriesFunction = inngest.createFunction(
           .eq("audit_id", audit_id)
           .eq("source", "user"),
       ]);
-      return {
+      const result = {
         business: businessRes.data,
         queries: queriesRes.data ?? [],
       };
+      console.log(
+        `[run-manual-queries] fetch-context done : business=${!!result.business} brand_name=${result.business?.brand_name ?? "<missing>"} queries=${result.queries.length}`
+      );
+      return result;
     });
 
     if (!context.business || context.queries.length === 0) {
       console.warn(
-        `[run-manual-queries] context manquant pour audit ${audit_id} : business=${!!context.business} queries=${context.queries.length}`
+        `[run-manual-queries] CONTEXT MISSING audit=${audit_id} business=${!!context.business} queries=${context.queries.length} — abort. Probable cause : queries inserees mais audit_business_info absent (rare), OU queries ne sont pas source='user' (race condition).`
       );
       return { success: false, reason: "context_missing" };
     }
@@ -114,29 +126,64 @@ export const runManualQueriesFunction = inngest.createFunction(
       "perplexity",
       "gemini",
     ];
+    console.log(
+      `[run-manual-queries] fan-out 4 providers x ${visQueries.length} queries = ${providers.length * visQueries.length} appels LLM`
+    );
     const responsesPerProvider = await Promise.all(
       providers.map((provider) =>
-        step.run(`manual-visibility-${provider}`, () =>
-          trackVisibility(visQueries, {
+        step.run(`manual-visibility-${provider}`, async () => {
+          const tStart = Date.now();
+          console.log(
+            `[run-manual-queries] visibility-${provider} START (${visQueries.length} queries)`
+          );
+          const responses = await trackVisibility(visQueries, {
             brand_name: context.business!.brand_name,
             brand_aliases: context.business!.brand_aliases,
             geo_target: context.business!.geo_zone,
             audit_id,
-            concurrency: 4, // peu de queries, on peut bourriner
+            // Concurrency : 1 par provider (la trackVisibility filtre
+            // sur only_provider donc on n'a que `visQueries.length`
+            // taches max). Reduit a 2 pour eviter les rate-limits sur
+            // les API qui throttlent agressivement (ex: Anthropic).
+            concurrency: 2,
             verbose: false,
             only_provider: provider,
-          })
-        )
+          });
+          const errors = responses.filter((r) => r.error);
+          console.log(
+            `[run-manual-queries] visibility-${provider} DONE in ${Date.now() - tStart}ms — ${responses.length} responses, ${errors.length} errors${
+              errors.length > 0
+                ? ` (first error: ${errors[0].error?.slice(0, 120)})`
+                : ""
+            }`
+          );
+          return responses;
+        })
       )
+    );
+
+    const allResponses = responsesPerProvider.flat();
+    const totalErrors = allResponses.filter((r) => r.error).length;
+    console.log(
+      `[run-manual-queries] fan-out complete : ${allResponses.length} responses total, ${totalErrors} errors`
     );
 
     // Step 3 : persist ai_responses + analyses. query_id_map = identite
     // ({} marche : lookupQueryId fallback sur la cle si non trouvee).
-    await step.run("manual-persist", () =>
-      persistAiResponses({
-        responses: responsesPerProvider.flat(),
+    await step.run("manual-persist", async () => {
+      console.log(
+        `[run-manual-queries] persist START : ${allResponses.length} ai_responses + analyses`
+      );
+      await persistAiResponses({
+        responses: allResponses,
         query_id_map: {},
-      })
+      });
+      console.log("[run-manual-queries] persist DONE");
+    });
+
+    const elapsedMs = Date.now() - t0;
+    console.log(
+      `[run-manual-queries] COMPLETE audit=${audit_id} in ${elapsedMs}ms — ${visQueries.length} queries, ${allResponses.length} responses (${totalErrors} errors)`
     );
 
     return {
@@ -144,7 +191,9 @@ export const runManualQueriesFunction = inngest.createFunction(
       audit_id,
       query_ids,
       processed_count: visQueries.length,
-      total_responses: responsesPerProvider.flat().length,
+      total_responses: allResponses.length,
+      error_count: totalErrors,
+      elapsed_ms: elapsedMs,
     };
   }
 );

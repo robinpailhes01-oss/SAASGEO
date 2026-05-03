@@ -315,6 +315,7 @@ export type Database = {
           error_message: string | null
           geo_target: string | null
           id: string
+          keywords: string[]
           language: string | null
           manual_competitors: string[] | null
           progress: number
@@ -331,6 +332,7 @@ export type Database = {
           error_message?: string | null
           geo_target?: string | null
           id?: string
+          keywords?: string[]
           language?: string | null
           manual_competitors?: string[] | null
           progress?: number
@@ -347,6 +349,7 @@ export type Database = {
           error_message?: string | null
           geo_target?: string | null
           id?: string
+          keywords?: string[]
           language?: string | null
           manual_competitors?: string[] | null
           progress?: number

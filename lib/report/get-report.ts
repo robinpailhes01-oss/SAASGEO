@@ -161,31 +161,32 @@ function buildWhyReasons(
   ];
 }
 
-// Genere le label d'impact d'une recommendation EN LANGAGE BUSINESS.
-// Format : "Yh de travail · +X clients/mois estimés"
+// Genere le label d'impact d'une recommendation EN LANGAGE QUALITATIF.
 //
-// Mapping :
-//   - effort selon priority :
-//       quick_win  -> "2h"     (chose qui se fait dans la journee)
-//       medium     -> "1 jour" (qq heures sur 2-3 jours)
-//       long_term  -> "1 sem"  (chantier non trivial)
-//   - clients/mois : impact_score (1-10) x 3 -> [3..30] clients estimes.
-//     Hypothese pedagogique d'un commerce local moyen : 1 unite d'impact
-//     LLM ~= 3 clients/mois. C'est volontairement arrondi et libelle
-//     "estimes" pour rester honnete (la valeur reelle depend du
-//     volume de recherche du secteur, qu'on n'a pas mesure ici).
-function impactLabel(
-  priority: "quick_win" | "medium" | "long_term",
-  impactScore: number
-): string {
-  const effort =
-    priority === "quick_win"
-      ? "2h"
-      : priority === "medium"
-      ? "1 jour"
-      : "1 sem";
-  const clients = Math.max(3, Math.min(30, Math.round(impactScore * 3)));
-  return `${effort} de travail · +${clients} clients/mois estimés`;
+// V3 (suite test terrain) : on retire les "+X clients/mois estimes"
+// et "2h de travail" car ce sont des chiffres INVENTES qui nuisent a
+// la credibilite (un client qui sait que c'est une estimation arbitraire
+// decroche). On ne sait pas combien de clients ca va rapporter — par
+// contre on peut etre HONNETES sur le delai d'impact et le niveau
+// d'effort attendu.
+//
+// Mapping qualitatif :
+//   quick_win  -> "Impact rapide · Résultats en 24–72h"
+//   medium     -> "Impact moyen terme · Visible sous 30–60 jours"
+//   long_term  -> "Impact durable · Autorité sur 3–6 mois"
+//
+// `impactScore` (1-10) du LLM n'est plus exprime cote UI — il sert
+// uniquement au tri interne (priority asc + impact_score desc) pour
+// presenter les recos par ordre de pertinence.
+function impactLabel(priority: "quick_win" | "medium" | "long_term"): string {
+  switch (priority) {
+    case "quick_win":
+      return "Impact rapide · Résultats en 24–72h";
+    case "medium":
+      return "Impact moyen terme · Visible sous 30–60 jours";
+    case "long_term":
+      return "Impact durable · Autorité sur 3–6 mois";
+  }
 }
 
 // Tronque une description proprement sur le dernier espace avant la limite.
@@ -197,29 +198,29 @@ function truncate(text: string, max: number): string {
 }
 
 // Recommandations templatees de fallback (cas <3 recos en DB).
-// V2 : langage business, sans jargon. Format aligne sur le prompt
-// synthesis ("[Ce que vous perdez]" puis "[Action en simple]").
+// V3 : langage business + impact qualitatif (pas de chiffres clients
+// inventes qui nuisent a la credibilite). Cf. impactLabel().
 const FALLBACK_RECOS: PriorityAction[] = [
   {
     position: 1,
     title: "Vos concurrents apparaissent à votre place sur les questions IA",
     description:
       "Ajoutez sur votre site un fichier court qui explique votre activité aux IA — comme une fiche d'identité visible par ChatGPT, Claude et leurs concurrents. Pas besoin de développeur.",
-    impact_label: "2h de travail · +15 clients/mois estimés",
+    impact_label: impactLabel("quick_win"),
   },
   {
     position: 2,
     title: "Vos pages ne répondent pas aux questions exactes des clients",
     description:
       "Créez 1 page par question type que posent vos clients (ex: 'séjour romantique à votre ville'). Les IA piochent les pages qui répondent précisément à ces requêtes.",
-    impact_label: "1 jour de travail · +18 clients/mois estimés",
+    impact_label: impactLabel("medium"),
   },
   {
     position: 3,
     title: "Les sites cités par les IA ne parlent pas de vous",
     description:
       "Demandez à être référencé sur les annuaires et la presse locale qu'utilisent les IA pour citer des marques — Google, Pages Jaunes, presse régionale, blogs sectoriels.",
-    impact_label: "1 sem de travail · +15 clients/mois estimés",
+    impact_label: impactLabel("long_term"),
   },
 ];
 
@@ -363,7 +364,7 @@ export async function getReport(auditId: string): Promise<ReportData | null> {
     position: i + 1,
     title: r.title,
     description: truncate(r.description ?? "", 120),
-    impact_label: impactLabel(r.priority, r.impact_score),
+    impact_label: impactLabel(r.priority),
   }));
   // Si moins de 3 recos en DB, on complete avec les fallback templates.
   const top3: PriorityAction[] = [...top3FromDb];

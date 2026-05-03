@@ -150,7 +150,18 @@ Le business a une presence nationale (${geoContext}) sans ancrage local marque. 
 INTERDIT : ne genere JAMAIS de question contenant les mots "votre ville", "votre region" ou tout autre placeholder. Utilise des villes/regions reelles francaises (Paris, Lyon, Marseille, Bordeaux...) ou pas de mention geographique du tout.`;
 }
 
-export function buildQueriesGenPrompt(business: BusinessInfo): {
+export function buildQueriesGenPrompt(
+  business: BusinessInfo,
+  options?: {
+    // Mots-cles importants saisis par le client (audits.keywords).
+    // Si presents, le LLM les utilise pour orienter les questions
+    // vers la vraie cible client ("Activite romantique en mer
+    // Montpellier" plutot que "Meilleur charter Montpellier").
+    // ENRICHISSEMENT, jamais un remplacement : le split geo 15/6/6/3
+    // et la repartition par categorie restent applicables.
+    keywords?: string[];
+  }
+): {
   system: string;
   prompt: string;
 } {
@@ -162,6 +173,20 @@ export function buildQueriesGenPrompt(business: BusinessInfo): {
         : `Generate queries in the user's primary language (${business.language}).`;
 
   const geoStrategy = buildGeoStrategy(business);
+
+  const keywords = (options?.keywords ?? [])
+    .map((k) => k.trim())
+    .filter((k) => k.length > 0);
+  const keywordsBlock =
+    keywords.length > 0
+      ? `\n\nMOTS-CLES CLIENT (priorite editoriale) :
+Le client a indique que ses prospects cherchent autour de ces themes : ${keywords.map((k) => `"${k}"`).join(", ")}.
+Integre ces mots-cles dans AU MOINS 10 des 30 questions (pas tous dans la meme question — repartis intelligemment dans les categories service et comparative). Exemples si keywords=["romantique", "EVJF"] :
+  - "Activite romantique en mer Montpellier" (service, MAIN)
+  - "Idee EVJF originale Montpellier" (comparative, MAIN)
+  - "Sortie en bateau romantique Carnon" (service, EXACT)
+Si un keyword ne s'applique pas naturellement a une question, ne l'integre pas — pas de "keyword stuffing" force qui rendrait les questions absurdes.`
+      : "";
 
   return {
     system: `Tu es un expert en comportement de recherche conversationnelle. Tu generes des requetes realistes que des prospects poseraient a ChatGPT, Claude, Perplexity ou Gemini pour decouvrir un business comme celui-ci.
@@ -186,7 +211,7 @@ Localisation detectee :
   - Echelle : ${business.business_scope}
 Concurrents detectes : ${business.detected_competitors.join(", ") || "aucun detecte"}
 
-${geoStrategy}
+${geoStrategy}${keywordsBlock}
 
 ${langInstruction}
 

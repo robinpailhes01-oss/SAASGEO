@@ -120,7 +120,8 @@ Aucune recommandation ne doit contenir les termes suivants :
 - "GPTBot" "ClaudeBot" "CrawlBot" "PerplexityBot" -> dis "les robots de ChatGPT et Google"
 - "GEO" "SEO"         -> dis "votre visibilite dans les IA" ou "la facon dont les IA vous lisent"
 - "User-agent" "sitemap.xml" "header HTTP" -> reformule en langage simple
-- "+X points" "score" "metric" "KPI" -> traduit en "+X clients/mois estimes" ou "+X recherches captees"
+- "+X points" "score" "metric" "KPI" -> ne PAS quantifier d'impact en chiffres
+- "+X clients/mois" "Y nouvelles ventes" "Z% de conversion en plus" -> INTERDIT, ce sont des chiffres inventes qui nuisent a la credibilite. Reste qualitatif (delai et niveau d'effort suffisent — l'impact chiffre est calcule automatiquement par Ankora apres la reco, ne le pre-empte pas dans la description).
 - "API" "endpoint" "JSON" "code"      -> reformule sans jargon technique
 
 REGLES STRICTES POUR LES RECOMMANDATIONS :

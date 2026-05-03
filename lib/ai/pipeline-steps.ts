@@ -173,14 +173,22 @@ export async function stepExtractBusiness(args: {
   // remplace city/region/business_scope/geo_zone meme si le LLM a
   // renvoye autre chose (ex : LLM a vu "Hérault" mais user a precise
   // "Carnon, Hérault" -> on garde la version user, plus fine).
+  //
+  // Le parser detecte aussi un city_main_hint si le user a saisi une
+  // grande ville reference dans son input (ex: "Carnon - Montpellier"
+  // -> city_main_hint=Montpellier). Si present, on pre-set city_main —
+  // le resolveur aval pourra confirmer / overrider.
+  let userParsedCityMainHint: string | null = null;
   if (userHint) {
     const parsed = parseUserGeoTarget(userHint);
+    userParsedCityMainHint = parsed.city_main_hint;
     business = {
       ...business,
       city: parsed.city,
       region: parsed.region ?? business.region,
       country: business.country ?? "France",
       geo_zone: business.geo_zone ?? userHint,
+      city_main: parsed.city_main_hint ?? business.city_main ?? null,
       business_scope: "local",
     };
   }
@@ -191,9 +199,19 @@ export async function stepExtractBusiness(args: {
   // un appel HTTP a api-adresse.data.gouv.fr puis Haversine sur la
   // liste statique MAJOR_CITIES_FR. Echec reseau -> null, le pipeline
   // continue et queries-gen fallback sur city_exact.
+  //
+  // IMPORTANT : on prefere geocoder le userHint COMPLET (s'il existe)
+  // plutot que juste business.city. Sinon "Carnon" seul est ambigu —
+  // il existe plusieurs Carnon en France et api-adresse pouvait
+  // renvoyer un Carnon en Bretagne -> city_main=Brest. Avec le
+  // userHint complet "Carnon - Montpellier" la geocodification
+  // disambiguue correctement vers Carnon-Plage (Hérault).
   if (business.business_scope === "local") {
     const resolveQuery =
-      business.city || business.geo_zone || userHint || "";
+      (userHint && userHint.trim()) ||
+      business.city ||
+      business.geo_zone ||
+      "";
     if (resolveQuery.trim()) {
       try {
         const resolved = await resolveCityMain(resolveQuery);
@@ -205,11 +223,22 @@ export async function stepExtractBusiness(args: {
             // une (region INSEE fiable), on l'utilise.
             region: business.region ?? resolved.region,
           };
+        } else if (userParsedCityMainHint) {
+          // Resolveur a echoue (network ou aucune ville >50k dans le
+          // rayon) MAIS le user nous a explicitement donne un hint :
+          // on garde son hint comme city_main de fallback.
+          business = {
+            ...business,
+            city_main: userParsedCityMainHint,
+          };
         }
       } catch (e) {
         console.warn(
-          `[stepExtractBusiness] city_main resolve failed : ${e instanceof Error ? e.message : String(e)} (le pipeline continue sans city_main)`
+          `[stepExtractBusiness] city_main resolve failed : ${e instanceof Error ? e.message : String(e)} (le pipeline continue${userParsedCityMainHint ? " avec le user hint" : " sans city_main"})`
         );
+        if (userParsedCityMainHint) {
+          business = { ...business, city_main: userParsedCityMainHint };
+        }
       }
     }
   }
@@ -234,6 +263,11 @@ export async function stepGenerateQueries(args: {
   audit_id: string;
   business: BusinessInfo;
   persist: boolean;
+  // Mots-cles client (audits.keywords). Optionnel — si fourni,
+  // le prompt LLM oriente les questions vers la vraie cible
+  // ("Activite romantique en mer Montpellier" plutot que "Meilleur
+  // charter Montpellier"). Aucun effet si vide.
+  keywords?: string[];
 }): Promise<{ queries: VisibilityQuery[]; query_id_map: QueryIdMap }> {
   if (args.persist) {
     await updateAuditStatus({
@@ -244,7 +278,9 @@ export async function stepGenerateQueries(args: {
     });
   }
 
-  const { system, prompt } = buildQueriesGenPrompt(args.business);
+  const { system, prompt } = buildQueriesGenPrompt(args.business, {
+    keywords: args.keywords,
+  });
   const model = TASK_MODELS.queries_generation;
   const result = await generateText(model, {
     system,

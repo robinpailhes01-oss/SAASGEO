@@ -18,6 +18,9 @@ export interface AuditRequestedEvent {
     audit_id: string;
     url: string;
     geo_target?: string | null;
+    // Mots-cles client (max 10) injectes dans le prompt queries-gen
+    // pour orienter les questions vers la vraie cible. Optionnel.
+    keywords?: string[];
   };
 }
 

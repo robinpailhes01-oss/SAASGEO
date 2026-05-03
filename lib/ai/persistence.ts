@@ -47,6 +47,7 @@ function getAdminUserId(): string {
 export async function createAudit(args: {
   url: string;
   geo_target?: string | null;
+  keywords?: string[];
 }): Promise<string> {
   const sb = createAdminClient();
   const url_normalized = (() => {
@@ -63,6 +64,7 @@ export async function createAudit(args: {
     url: args.url,
     url_normalized,
     geo_target: args.geo_target ?? null,
+    keywords: args.keywords && args.keywords.length > 0 ? args.keywords : [],
     status: "queued",
     progress: 0,
     current_step: "Initialisation",

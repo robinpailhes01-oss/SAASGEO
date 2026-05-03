@@ -61,10 +61,11 @@ export async function POST(req: NextRequest) {
     return err(400, "invalid_body", "Corps de requete JSON invalide.");
   }
 
-  const { url, geo_target, captcha_token } = (body ?? {}) as {
+  const { url, geo_target, captcha_token, keywords } = (body ?? {}) as {
     url?: unknown;
     geo_target?: unknown;
     captcha_token?: unknown;
+    keywords?: unknown;
   };
 
   // 2. Validation URL stricte (anti-SSRF, ports, protocoles, TLD)
@@ -115,11 +116,31 @@ export async function POST(req: NextRequest) {
   const normalizedGeoTarget =
     typeof geo_target === "string" && geo_target.trim() ? geo_target.trim() : null;
 
+  // Keywords : tableau de strings 2-60 chars, max 10 entrees, dedup.
+  // Si pas un array valide ou vide, on stocke tableau vide (default DB).
+  const normalizedKeywords: string[] = (() => {
+    if (!Array.isArray(keywords)) return [];
+    const cleaned: string[] = [];
+    const seen = new Set<string>();
+    for (const k of keywords) {
+      if (typeof k !== "string") continue;
+      const t = k.trim();
+      if (t.length < 2 || t.length > 60) continue;
+      const key = t.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      cleaned.push(t);
+      if (cleaned.length >= 10) break;
+    }
+    return cleaned;
+  })();
+
   let audit_id: string;
   try {
     audit_id = await createAudit({
       url: urlCheck.url,
       geo_target: normalizedGeoTarget,
+      keywords: normalizedKeywords,
     });
   } catch (e) {
     return err(500, "server_error", "Impossible de créer l'audit.", {
@@ -131,7 +152,12 @@ export async function POST(req: NextRequest) {
   try {
     await inngest.send({
       name: "audit/requested",
-      data: { audit_id, url: urlCheck.url, geo_target: normalizedGeoTarget },
+      data: {
+        audit_id,
+        url: urlCheck.url,
+        geo_target: normalizedGeoTarget,
+        keywords: normalizedKeywords,
+      },
     });
   } catch (e) {
     console.error("[api/audits] inngest.send failed :", e);

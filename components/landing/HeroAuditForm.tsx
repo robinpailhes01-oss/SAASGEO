@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Sparkles, Loader2, ShieldCheck, Zap, Heart, MapPin } from "lucide-react";
+import { Sparkles, Loader2, ShieldCheck, Zap, Heart, MapPin, Tag } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -57,6 +57,7 @@ export function HeroAuditForm({ className }: { className?: string }) {
   const router = useRouter();
   const [value, setValue] = React.useState("");
   const [city, setCity] = React.useState("");
+  const [keywords, setKeywords] = React.useState("");
   const [touched, setTouched] = React.useState(false);
   const [submitting, setSubmitting] = React.useState(false);
 
@@ -88,11 +89,26 @@ export function HeroAuditForm({ className }: { className?: string }) {
       // Le champ ville est optionnel : si rempli, on l'envoie en
       // geo_target (champ deja accepte par /api/audits depuis le debut).
       const trimmedCity = city.trim();
-      const body: { url: string; geo_target?: string } = {
+      // Mots-cles : split sur virgule / nouvelle ligne, dedup, trim,
+      // garde les non-vides. Limite a 10 cote client (echo cote API).
+      const parsedKeywords = keywords
+        .split(/[,\n]+/)
+        .map((k) => k.trim())
+        .filter((k) => k.length > 0 && k.length <= 60);
+      const dedupKeywords = Array.from(new Set(parsedKeywords)).slice(0, 10);
+
+      const body: {
+        url: string;
+        geo_target?: string;
+        keywords?: string[];
+      } = {
         url: validation.url,
       };
       if (trimmedCity) {
         body.geo_target = trimmedCity;
+      }
+      if (dedupKeywords.length > 0) {
+        body.keywords = dedupKeywords;
       }
 
       const res = await fetch("/api/audits", {
@@ -192,6 +208,38 @@ export function HeroAuditForm({ className }: { className?: string }) {
         >
           Recommandé si vous êtes un commerce local — améliore fortement
           la pertinence de l&apos;audit.
+        </p>
+      </div>
+
+      {/* Mots-cles client : enrichissement optionnel, oriente le LLM
+          de generation de queries vers la VRAIE cible (ex: "romantique"
+          / "EVJF" / "privatise" pour un charter). Sans valeur saisie,
+          comportement original (queries generiques par secteur). */}
+      <div className="mt-3">
+        <div className="relative">
+          <Tag
+            className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-ankora-text-muted"
+            aria-hidden="true"
+          />
+          <Input
+            type="text"
+            name="keywords"
+            placeholder="Mots-clés importants (ex: romantique, EVJF, privatisé)"
+            value={keywords}
+            onChange={(e) => setKeywords(e.target.value)}
+            disabled={submitting}
+            maxLength={400}
+            autoComplete="off"
+            className="h-12 pl-9 text-sm sm:rounded-xl"
+            aria-describedby="audit-keywords-help"
+          />
+        </div>
+        <p
+          id="audit-keywords-help"
+          className="mt-1.5 text-xs text-ankora-text-muted text-center sm:text-left"
+        >
+          Séparez par des virgules. Oriente les questions testées vers
+          ce que cherchent vraiment vos clients.
         </p>
       </div>
 

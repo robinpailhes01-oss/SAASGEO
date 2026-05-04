@@ -119,3 +119,93 @@ describe("buildQueriesGenPrompt — strategie geo", () => {
     expect(prompt).toContain("English");
   });
 });
+
+describe("buildQueriesGenPrompt — REGRESSION langage CLIENT vs jargon SECTEUR", () => {
+  // Bug terrain : "Meilleur charter Montpellier" ne reflete pas ce que
+  // les vrais prospects cherchent ("location bateau Montpellier"). Le
+  // system prompt impose desormais le LANGAGE CLIENT (location, sortie,
+  // que faire, idee) plutot que le jargon professionnel (charter,
+  // privatisation, prestations).
+  const localBusiness: BusinessInfo = {
+    brand_name: "Harmonie Yacht",
+    brand_aliases: ["Harmonie Yacht"],
+    industry: "Charter de yacht",
+    services: ["Location", "Sortie en mer"],
+    geo_zone: "Carnon, Hérault",
+    city: "Carnon",
+    city_main: "Montpellier",
+    region: "Hérault",
+    country: "France",
+    business_scope: "local",
+    detected_competitors: [],
+    language: "fr",
+  };
+
+  it("system prompt impose la regle 'LANGAGE CLIENT, PAS LANGAGE SECTEUR'", () => {
+    const { system } = buildQueriesGenPrompt(localBusiness);
+    expect(system).toContain("LANGAGE CLIENT, PAS LANGAGE SECTEUR");
+    expect(system).toContain("location bateau");
+    expect(system).toContain("que faire");
+  });
+
+  it("system prompt liste les equivalents SECTEUR -> CLIENT", () => {
+    const { system } = buildQueriesGenPrompt(localBusiness);
+    // Quelques mappings explicites du tableau d'equivalents
+    expect(system).toContain("charter de yacht");
+    expect(system).toContain("location bateau");
+    expect(system).toContain("ou dormir");
+    expect(system).toContain("ou bien manger");
+  });
+
+  it("system prompt liste le vocabulaire client a privilegier", () => {
+    const { system } = buildQueriesGenPrompt(localBusiness);
+    // Mots du vocabulaire client recurrent
+    expect(system).toContain("location");
+    expect(system).toContain("sortie");
+    expect(system).toContain("activite");
+    expect(system).toContain("idee");
+    expect(system).toContain("originale");
+    expect(system).toContain("insolite");
+  });
+
+  it("system prompt rappelle le quota >= 3 requetes 'decouverte locale'", () => {
+    const { system } = buildQueriesGenPrompt(localBusiness);
+    expect(system).toContain("decouverte locale");
+    expect(system).toContain("Que faire a");
+  });
+
+  it("LOCAL : strategy injecte le QUOTA OBLIGATOIRE 'decouverte locale'", () => {
+    const { prompt } = buildQueriesGenPrompt(localBusiness);
+    expect(prompt).toContain("QUOTA OBLIGATOIRE");
+    expect(prompt).toContain("Que faire a Montpellier");
+    expect(prompt).toContain("Idee originale Montpellier");
+    expect(prompt).toContain("Activite insolite Montpellier");
+  });
+
+  it("LOCAL : exemple service MAIN affiche 'Location bateau' (langage client)", () => {
+    const { prompt } = buildQueriesGenPrompt(localBusiness);
+    // L'exemple sectoriel utilise "Location bateau" et NON "Meilleur charter"
+    expect(prompt).toContain("Location bateau Montpellier");
+    expect(prompt).toContain("langage CLIENT");
+  });
+
+  it("Keywords : block 'priorite editoriale forte' + 'LANGAGE DE LA VRAIE CIBLE'", () => {
+    const { prompt } = buildQueriesGenPrompt(localBusiness, {
+      keywords: ["romantique", "EVJF", "privatise"],
+    });
+    expect(prompt).toContain("MOTS-CLES CLIENT (priorite editoriale forte)");
+    expect(prompt).toContain("LANGAGE DE LA VRAIE CIBLE");
+    expect(prompt).toContain("romantique");
+    expect(prompt).toContain("EVJF");
+    expect(prompt).toContain("privatise");
+    // Exemples d'integration concrets
+    expect(prompt).toContain("Sortie en mer romantique Montpellier");
+    expect(prompt).toContain("Idee EVJF originale Montpellier");
+  });
+
+  it("Keywords absents : pas de block keywords mais quota decouverte conserve", () => {
+    const { prompt } = buildQueriesGenPrompt(localBusiness);
+    expect(prompt).not.toContain("MOTS-CLES CLIENT");
+    expect(prompt).toContain("QUOTA OBLIGATOIRE");
+  });
+});

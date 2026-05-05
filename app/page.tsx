@@ -1,21 +1,33 @@
 // =====================================================================
-// Landing Ankora — Bloc 5 (Phase B + Landing v2)
+// Landing Ankora — Bloc 5 (Phase B + Landing v2 + GEO Self-Application)
 //
-// Composition v2 :
+// Composition :
 //   1. Header (variant minimal, pour ne pas surcharger le hero)
 //   2. Hero : titre choc + sous-titre + formulaire + AILogos +
 //      HeroMockup (apercu rapport en perspective avec cards flottantes)
 //   3. MetricsBar : 4 KPI cards reels (4 IA, 30 questions, 51 criteres,
 //      ~5 minutes) — ancre le serieux des le "above the fold scroll"
-//   4. HowItWorks : 3 etapes
-//   5. WhyAnkora : 3 differenciateurs (multi-secteurs, francais, plan d'action)
-//   6. WhyUrgent v2 : layout 2 cols texte+stats / AISearchMockup
-//   7. FinalCta : encadre gradient avec form integre
-//   8. Footer
+//   4. MarketStats : 4 stats sourcees du marche IA conversationnel
+//      (800M MAU ChatGPT, 1.2% commerces locaux cites, 4.4x conversion,
+//      +527% trafic). CHAQUE stat avec sa source visible — credibilite.
+//   5. HowItWorks : 3 etapes
+//   6. WhyAnkora : 3 differenciateurs (multi-secteurs, francais, plan d'action)
+//   7. WhyUrgent v2 : layout 2 cols texte+stats / AISearchMockup
+//   8. FAQ : 6 questions/reponses BLUF + schema FAQPage (cf. JSON-LD)
+//   9. FinalCta : encadre gradient avec form integre
+//   10. Footer
 //
-// SEO : meta title + description, OpenGraph, Twitter Card, JSON-LD
-// WebApplication. Fonts deja optimises au layout root (Geist + Inter +
-// JetBrains via next/font, swap+preload).
+// SEO + GEO (Generative Engine Optimization, le produit qui vend la
+// visibilite IA doit lui-meme etre visible) :
+//   - meta title/description, OpenGraph, Twitter Card
+//   - JSON-LD SoftwareApplication enrichi (creator Organization, offers)
+//   - JSON-LD FAQPage genere depuis FAQ_ITEMS (single source of truth)
+//   - app/robots.ts autorise explicitement GPTBot, OAI-SearchBot,
+//     ClaudeBot, PerplexityBot, Google-Extended (+ wildcard)
+//   - public/llms.txt decrit l'offre Ankora pour les IA
+//
+// Fonts deja optimises au layout root (Geist + Inter + JetBrains via
+// next/font, swap+preload).
 // =====================================================================
 
 import type { Metadata } from "next";
@@ -27,15 +39,21 @@ import { HeroAuditForm } from "@/components/landing/HeroAuditForm";
 import { HeroMockup } from "@/components/landing/HeroMockup";
 import { AILogos } from "@/components/landing/AILogos";
 import { MetricsBar } from "@/components/landing/MetricsBar";
+import { MarketStats } from "@/components/landing/MarketStats";
 import { HowItWorks } from "@/components/landing/HowItWorks";
 import { WhyAnkora } from "@/components/landing/WhyAnkora";
 import { WhyUrgent } from "@/components/landing/WhyUrgent";
+import { FAQ } from "@/components/landing/FAQ";
+import { FAQ_ITEMS } from "@/components/landing/faq-items";
 import { FinalCta } from "@/components/landing/FinalCta";
 
 const SITE_TITLE =
   "Ankora — Audit gratuit de votre visibilité sur ChatGPT, Claude, Perplexity, Gemini";
 const SITE_DESCRIPTION =
-  "Découvrez en 5 minutes si votre marque est citée par les IA conversationnelles. Audit gratuit, sans inscription.";
+  "Audit de visibilité IA pour commerces locaux français. Mesurez si votre entreprise apparaît dans ChatGPT, Claude, Perplexity et Gemini quand vos clients vous cherchent. Gratuit, sans inscription.";
+
+const SITE_URL =
+  process.env.NEXT_PUBLIC_APP_URL ?? "https://saasgeo-two.vercel.app";
 
 export const metadata: Metadata = {
   title: SITE_TITLE,
@@ -65,20 +83,46 @@ export const metadata: Metadata = {
   },
 };
 
-// JSON-LD WebApplication — facilite la decouverte par les IA et Google
-const jsonLd = {
+// JSON-LD SoftwareApplication enrichi : facilite la decouverte par
+// Google + permet aux IA (ChatGPT, Perplexity, Gemini grounding) de
+// citer Ankora avec contexte structure complet (offre, langue,
+// createur Organization). Plus precis que WebApplication car expose
+// applicationCategory + operatingSystem.
+const jsonLdSoftwareApp = {
   "@context": "https://schema.org",
-  "@type": "WebApplication",
+  "@type": "SoftwareApplication",
   name: "Ankora",
   description: SITE_DESCRIPTION,
+  url: SITE_URL,
   applicationCategory: "BusinessApplication",
   operatingSystem: "Web",
+  inLanguage: "fr-FR",
   offers: {
     "@type": "Offer",
     price: "0",
     priceCurrency: "EUR",
+    description: "Audit gratuit de visibilité IA, sans inscription",
   },
-  inLanguage: "fr-FR",
+  creator: {
+    "@type": "Organization",
+    name: "Ankora",
+    url: SITE_URL,
+  },
+};
+
+// JSON-LD FAQPage genere depuis FAQ_ITEMS (single source of truth :
+// si on edite la FAQ visible cote UI, le schema reste sync).
+const jsonLdFaq = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: FAQ_ITEMS.map((item) => ({
+    "@type": "Question",
+    name: item.question,
+    acceptedAnswer: {
+      "@type": "Answer",
+      text: item.answer,
+    },
+  })),
 };
 
 export default function HomePage() {
@@ -145,6 +189,9 @@ export default function HomePage() {
         {/* ---------- KPI CARDS REELS ---------- */}
         <MetricsBar />
 
+        {/* ---------- STATS DU MARCHE IA (sources publiques) ---------- */}
+        <MarketStats />
+
         {/* ---------- COMMENT CA MARCHE ---------- */}
         <HowItWorks />
 
@@ -154,16 +201,28 @@ export default function HomePage() {
         {/* ---------- POURQUOI C'EST URGENT (avec mockup chat IA) ---------- */}
         <WhyUrgent />
 
+        {/* ---------- FAQ (BLUF, 6 questions + schema FAQPage) ---------- */}
+        <FAQ />
+
         {/* ---------- CTA FINAL ---------- */}
         <FinalCta />
       </main>
 
       <Footer />
 
-      {/* JSON-LD : injecte hors arbre React pour ne pas alourdir l'hydratation */}
+      {/* JSON-LD SoftwareApplication : decouverte structuree par Google
+          + grounding IA (ChatGPT search, Perplexity). */}
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify(jsonLdSoftwareApp),
+        }}
+      />
+      {/* JSON-LD FAQPage : permet aux IA d'extraire les paires Q/R
+          directement et de les citer dans les reponses. */}
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLdFaq) }}
       />
     </>
   );

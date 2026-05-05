@@ -1,0 +1,46 @@
+# Ankora
+
+> Outil d'audit de visibilité IA pour commerces locaux français.
+
+## À propos
+
+Ankora mesure si votre entreprise apparaît dans les réponses de ChatGPT, Claude, Perplexity et Gemini quand vos clients vous cherchent via une IA.
+
+Chaque audit interroge les 4 IA conversationnelles principales avec 30 questions clients (générées selon votre secteur, votre ville et vos mots-clés), puis analyse 120 réponses pour mesurer votre présence réelle dans le marché conversationnel.
+
+Le rapport identifie les concurrents qui apparaissent à votre place, les requêtes que vous ratez, et propose un plan d'action concret avec impact qualitatif (résultats en 24-72h, 30-60 jours, ou 3-6 mois selon les actions).
+
+## Fonctionnalités
+
+- [Audit gratuit](https://saasgeo-two.vercel.app/) : analyse complète en 5 minutes, sans inscription
+- Rapport de visibilité : score sur 4 IA, classement vs concurrents locaux, liste des plateformes nationales qui captent vos requêtes
+- Recommandations personnalisées : actions prioritaires citant les concurrents réels et les questions précises manquées
+- Évolution mesurable : présence par catégorie (marque / sectoriel / comparatif), comparaison vs précédent audit
+- Questions personnalisées : 3 requêtes au choix testées sur les 4 IA après le rapport
+
+## Cible
+
+Commerces indépendants locaux français : restaurants, hôtels, activités touristiques, artisans, coiffeurs, charters, garages, cabinets, toute entreprise physique avec un ancrage géographique.
+
+Le produit est aussi adapté aux marques nationales sans implantation physique (e-commerce, SaaS, marketplace) avec un mode `business_scope=national` qui adapte automatiquement les questions générées.
+
+## Différenciateurs
+
+- 100% en français, pour des commerces français
+- Détection automatique de la grande ville de référence (ex : Carnon → Montpellier) car les prospects cherchent par grande ville, pas par village
+- Langage CLIENT dans les questions générées (ex : "location bateau", "que faire à Montpellier") plutôt que jargon professionnel
+- Scoring symétrique : marque et concurrents comparés sur la même base de 120 réponses
+
+## Tarifs
+
+- Audit gratuit : 0 € — sans inscription, sans limite, lien partageable
+- Plan d'action accompagné : 290 € one-shot — consultation 30 min + plan personnalisé écrit
+- Suivi mensuel : 199 €/mois — audit récurrent + alertes évolution + accompagnement
+
+## Stack technique (transparence)
+
+Pipeline propre alimenté par les API officielles d'OpenAI, Anthropic, Perplexity et Google. Aucun scraping de ChatGPT/Claude. Aucune donnée client revendue. Audits publics par UUID v4 unguessable (RGPD compliant).
+
+## Contact
+
+contact@robinpailhes.fr — équipe basée en France.

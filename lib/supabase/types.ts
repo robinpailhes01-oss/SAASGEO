@@ -211,6 +211,53 @@ export type Database = {
         }
         Relationships: []
       }
+      audit_history: {
+        Row: {
+          audit_id: string
+          cited_queries: string[]
+          computed_at: string
+          global_score: number | null
+          mention_rate: number | null
+          presence_branded: number
+          presence_comparative: number
+          presence_service: number
+          scores_per_provider: Json
+          url_normalized: string
+        }
+        Insert: {
+          audit_id: string
+          cited_queries?: string[]
+          computed_at?: string
+          global_score?: number | null
+          mention_rate?: number | null
+          presence_branded?: number
+          presence_comparative?: number
+          presence_service?: number
+          scores_per_provider?: Json
+          url_normalized: string
+        }
+        Update: {
+          audit_id?: string
+          cited_queries?: string[]
+          computed_at?: string
+          global_score?: number | null
+          mention_rate?: number | null
+          presence_branded?: number
+          presence_comparative?: number
+          presence_service?: number
+          scores_per_provider?: Json
+          url_normalized?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "audit_history_audit_id_fkey"
+            columns: ["audit_id"]
+            isOneToOne: true
+            referencedRelation: "audits"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       audit_recommendations: {
         Row: {
           audit_id: string

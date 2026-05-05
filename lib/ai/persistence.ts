@@ -303,6 +303,49 @@ export async function persistScores(args: {
 }
 
 // ---------------------------------------------------------------------
+// Etape 5b : snapshot historique pour le bloc Evolution.
+//
+// Une ligne par audit termine, indexee sur url_normalized pour
+// permettre le calcul "vs precedent" sur le meme domaine. Pas de
+// donnee inventee/volume estime — uniquement ce qu'on a mesure.
+//
+// `cited_queries` stocke les texts de query (lowercase+trim+spaces
+// collapses) ou la marque a ete citee par >=1 IA. Sert au calcul
+// gained/lost dans le rapport.
+// ---------------------------------------------------------------------
+export async function persistAuditHistory(args: {
+  audit_id: string;
+  url_normalized: string;
+  global_score: number;
+  visibility_scores: VisibilityScores;
+  presence_branded: number;
+  presence_service: number;
+  presence_comparative: number;
+  cited_queries: string[];
+}): Promise<void> {
+  const sb = createAdminClient();
+  const row: DB["audit_history"]["Insert"] = {
+    audit_id: args.audit_id,
+    url_normalized: args.url_normalized,
+    global_score: args.global_score,
+    mention_rate: args.visibility_scores.mention_rate,
+    presence_branded: args.presence_branded,
+    presence_service: args.presence_service,
+    presence_comparative: args.presence_comparative,
+    scores_per_provider:
+      args.visibility_scores.per_provider as unknown as DB["audit_history"]["Insert"]["scores_per_provider"],
+    cited_queries: args.cited_queries,
+  };
+  // upsert : audit_id est PK, idempotent en cas de replay Inngest
+  const { error } = await sb
+    .from("audit_history")
+    .upsert(row, { onConflict: "audit_id" });
+  if (error) {
+    console.error(`[persist] audit_history failed : ${error.message}`);
+  }
+}
+
+// ---------------------------------------------------------------------
 // Etape 6 : recommendations (bulk)
 // ---------------------------------------------------------------------
 export async function persistRecommendations(args: {

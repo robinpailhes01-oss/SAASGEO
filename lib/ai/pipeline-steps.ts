@@ -52,9 +52,14 @@ import {
   persistQueries,
   persistAiResponses,
   persistScores,
+  persistAuditHistory,
   persistRecommendations,
   finalizeAudit,
 } from "./persistence";
+import {
+  computePresenceByCategory,
+  buildCitedQueriesList,
+} from "./evolution-helpers";
 
 import { randomUUID } from "node:crypto";
 
@@ -463,6 +468,20 @@ export async function stepComputeScores(args: {
   technical: TechAuditResult;
   visibility_scores: VisibilityScores;
   persist: boolean;
+  // Optionnel : si fourni, on persiste aussi un snapshot dans
+  // audit_history pour la comparaison "vs precedent" (bloc Evolution).
+  // url_normalized vient de audits.url_normalized (cf. createAudit).
+  // queries + responses servent au calcul presence par categorie +
+  // cited_queries normalises.
+  history?: {
+    url_normalized: string;
+    queries: Array<{
+      id: string;
+      text: string;
+      category: "branded" | "service" | "comparative";
+    }>;
+    responses: VisibilityResponse[];
+  };
 }): Promise<{
   technical_score: number;
   visibility_score: number;
@@ -479,6 +498,40 @@ export async function stepComputeScores(args: {
       visibility_scores: args.visibility_scores,
       global_score,
     });
+
+    // Snapshot historique (audit_history) — base pour le bloc Evolution.
+    // On reconstruit responsesByQueryId pour les helpers purs.
+    if (args.history) {
+      const responsesByQueryId = new Map<
+        string,
+        Array<{ brand_mentioned: boolean | null }>
+      >();
+      for (const r of args.history.responses) {
+        if (!r.analysis) continue;
+        const list = responsesByQueryId.get(r.query_id) ?? [];
+        list.push({ brand_mentioned: r.analysis.brand_mentioned });
+        responsesByQueryId.set(r.query_id, list);
+      }
+      const presence = computePresenceByCategory({
+        queries: args.history.queries,
+        responsesByQueryId,
+      });
+      const citedQueries = buildCitedQueriesList({
+        queries: args.history.queries,
+        responsesByQueryId,
+      });
+      await persistAuditHistory({
+        audit_id: args.audit_id,
+        url_normalized: args.history.url_normalized,
+        global_score,
+        visibility_scores: args.visibility_scores,
+        presence_branded: presence.branded,
+        presence_service: presence.service,
+        presence_comparative: presence.comparative,
+        cited_queries: citedQueries,
+      });
+    }
+
     await updateAuditStatus({
       audit_id: args.audit_id,
       status: "scoring",

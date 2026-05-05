@@ -26,11 +26,21 @@ import {
   type CompetitorRanking,
   type PriorityAction,
   type ProviderScore,
+  type EvolutionDelta,
+  type EvolutionPayload,
+  type PresenceByCategory,
+  type PreviousSnapshot,
   type QueryCategory,
   type RecommendationsSummary,
   type ReportData,
   type WhyReason,
 } from "./types";
+import {
+  computePresenceByCategory,
+  buildCitedQueriesList,
+  computeQueriesDelta,
+  normalizeQueryText,
+} from "@/lib/ai/evolution-helpers";
 
 export type {
   AIResponseSample,
@@ -289,7 +299,7 @@ export async function getReport(auditId: string): Promise<ReportData | null> {
   ] = await Promise.all([
     sb
       .from("audits")
-      .select("id, url, status, completed_at")
+      .select("id, url, url_normalized, status, completed_at")
       .eq("id", auditId)
       .maybeSingle(),
     sb
@@ -384,6 +394,12 @@ export async function getReport(auditId: string): Promise<ReportData | null> {
   let top_competitors: CompetitorRanking[] = [];
   let city_main_platforms_above_brand: CompetitorRanking[] = [];
   let your_mentions_count = 0;
+  // Bloc Evolution : peut etre vide si l'audit n'a pas de queries
+  let evolution: EvolutionPayload = {
+    presence_per_category: { branded: 0, service: 0, comparative: 0 },
+    previous: null,
+    delta: null,
+  };
   let samples: AIResponseSample[] = [];
 
   if (queryIds.length > 0) {
@@ -677,6 +693,140 @@ export async function getReport(auditId: string): Promise<ReportData | null> {
         competitors_cited: c.competitors,
       };
     });
+
+    // ----- Bloc Evolution : presence par cat + snapshot precedent -----
+    // Cette logique reutilise queriesById / responsesById / analyses
+    // deja peuples ci-dessus pour eviter des reads DB redondants.
+    const responsesByQueryIdEvol = new Map<
+      string,
+      Array<{ brand_mentioned: boolean | null }>
+    >();
+    for (const a of analyses) {
+      const resp = responsesById.get(a.response_id);
+      if (!resp) continue;
+      const list = responsesByQueryIdEvol.get(resp.query_id) ?? [];
+      list.push({ brand_mentioned: a.brand_mentioned });
+      responsesByQueryIdEvol.set(resp.query_id, list);
+    }
+    const queriesArr = Array.from(queriesById.values()).map((q) => ({
+      id: q.id,
+      text: q.text,
+      category: q.category,
+    }));
+    const evolutionPresence = computePresenceByCategory({
+      queries: queriesArr,
+      responsesByQueryId: responsesByQueryIdEvol,
+    });
+    const currentCitedNorm = buildCitedQueriesList({
+      queries: queriesArr,
+      responsesByQueryId: responsesByQueryIdEvol,
+    });
+    const currentAllNorm = queriesArr.map((q) => normalizeQueryText(q.text));
+
+    // Charge le snapshot precedent du meme url_normalized (s'il existe).
+    let evolutionPrevious: PreviousSnapshot | null = null;
+    let evolutionDelta: EvolutionDelta | null = null;
+    if (audit.url_normalized) {
+      const { data: previousRows } = await sb
+        .from("audit_history")
+        .select(
+          "audit_id, computed_at, global_score, mention_rate, presence_branded, presence_service, presence_comparative, scores_per_provider, cited_queries"
+        )
+        .eq("url_normalized", audit.url_normalized)
+        .neq("audit_id", auditId)
+        .order("computed_at", { ascending: false })
+        .limit(1);
+      const prev = previousRows?.[0];
+      if (prev) {
+        // Reconstitue scores_per_provider en Record fiable
+        const prevScoresProvider: Record<AIProvider, number> = {
+          openai: 0,
+          anthropic: 0,
+          perplexity: 0,
+          gemini: 0,
+        };
+        for (const p of parsePerProvider(prev.scores_per_provider)) {
+          prevScoresProvider[p.provider] = p.score;
+        }
+        evolutionPrevious = {
+          computed_at: prev.computed_at,
+          global_score: prev.global_score,
+          mention_rate:
+            typeof prev.mention_rate === "number" ? prev.mention_rate : null,
+          presence_branded: prev.presence_branded,
+          presence_service: prev.presence_service,
+          presence_comparative: prev.presence_comparative,
+          scores_per_provider: prevScoresProvider,
+        };
+
+        // previousAll : on a stocke uniquement les citees dans
+        // audit_history. On lit la liste totale via queries WHERE
+        // audit_id = prev.audit_id (1 read supplementaire) pour
+        // calculer l'overlap qui valide la comparabilite.
+        const { data: prevQueriesRows } = await sb
+          .from("queries")
+          .select("text")
+          .eq("audit_id", prev.audit_id);
+        const previousAllNorm = (prevQueriesRows ?? []).map((q) =>
+          normalizeQueryText(q.text)
+        );
+        const previousCitedNorm = Array.isArray(prev.cited_queries)
+          ? prev.cited_queries
+          : [];
+
+        const queriesDelta = computeQueriesDelta(
+          currentCitedNorm,
+          previousCitedNorm,
+          currentAllNorm,
+          previousAllNorm
+        );
+
+        // Scores actuels en Record (pour calcul delta uniforme)
+        const currentScoresProvider: Record<AIProvider, number> = {
+          openai: 0,
+          anthropic: 0,
+          perplexity: 0,
+          gemini: 0,
+        };
+        for (const p of parsePerProvider(scores?.visibility_per_provider)) {
+          currentScoresProvider[p.provider] = p.score;
+        }
+        const scoresDelta: Record<AIProvider, number> = {
+          openai: currentScoresProvider.openai - prevScoresProvider.openai,
+          anthropic:
+            currentScoresProvider.anthropic - prevScoresProvider.anthropic,
+          perplexity:
+            currentScoresProvider.perplexity - prevScoresProvider.perplexity,
+          gemini: currentScoresProvider.gemini - prevScoresProvider.gemini,
+        };
+
+        evolutionDelta = {
+          global_score:
+            typeof scores?.global_score === "number" &&
+            typeof prev.global_score === "number"
+              ? scores.global_score - prev.global_score
+              : null,
+          mention_rate:
+            typeof scores?.mention_rate === "number" &&
+            typeof prev.mention_rate === "number"
+              ? Math.round((scores.mention_rate - prev.mention_rate) * 10) / 10
+              : null,
+          presence_branded: evolutionPresence.branded - prev.presence_branded,
+          presence_service: evolutionPresence.service - prev.presence_service,
+          presence_comparative:
+            evolutionPresence.comparative - prev.presence_comparative,
+          scores_per_provider: scoresDelta,
+          queries_gained: queriesDelta?.gained ?? null,
+          queries_lost: queriesDelta?.lost ?? null,
+        };
+      }
+    }
+
+    evolution = {
+      presence_per_category: evolutionPresence,
+      previous: evolutionPrevious,
+      delta: evolutionDelta,
+    };
   }
 
   return {
@@ -718,5 +868,6 @@ export async function getReport(auditId: string): Promise<ReportData | null> {
     samples,
     why_reasons,
     recommendations,
+    evolution,
   };
 }

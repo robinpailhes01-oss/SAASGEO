@@ -52,6 +52,52 @@ export type ProviderScore = {
 // l'affichage d'un bandeau de localisation dans le rapport.
 export type BusinessScope = "local" | "national" | "international";
 
+// =====================================================================
+// Bloc Evolution — comparaison "vs precedent" pour le meme domaine
+// =====================================================================
+
+// Presence par categorie sur les 30 queries 'generated' standard.
+// Une query "compte" si AU MOINS une des 4 IA cite la marque.
+export type PresenceByCategory = {
+  branded: number; // 0..10
+  service: number;
+  comparative: number;
+};
+
+// Snapshot precedent (depuis audit_history) — null si premier audit
+// pour ce domaine.
+export type PreviousSnapshot = {
+  computed_at: string;
+  global_score: number | null;
+  mention_rate: number | null;
+  presence_branded: number;
+  presence_service: number;
+  presence_comparative: number;
+  scores_per_provider: Record<AIProvider, number>;
+};
+
+// Delta entre snapshot courant et precedent. Champs nullables si non
+// applicables (ex: queries_delta=null si overlap < 5).
+export type EvolutionDelta = {
+  global_score: number | null;       // courant - precedent
+  mention_rate: number | null;
+  presence_branded: number;
+  presence_service: number;
+  presence_comparative: number;
+  scores_per_provider: Record<AIProvider, number>;
+  // Liste des query_texts (deja affichables, pas normalises) ou la
+  // marque est citee MAINTENANT mais pas avant.
+  queries_gained: string[] | null;
+  // Idem mais a l'inverse : etait cite, ne l'est plus.
+  queries_lost: string[] | null;
+};
+
+export type EvolutionPayload = {
+  presence_per_category: PresenceByCategory;
+  previous: PreviousSnapshot | null;
+  delta: EvolutionDelta | null;
+};
+
 export type ReportData = {
   // -- Audit metadata --
   audit_id: string;
@@ -111,6 +157,9 @@ export type ReportData = {
   // -- Phase D.3 : pourquoi invisible + actions prioritaires --
   why_reasons: WhyReason[]; // exactement 3 (technique + notoriete + contenu)
   recommendations: RecommendationsSummary;
+
+  // -- Bloc Evolution : presence par categorie + delta vs precedent --
+  evolution: EvolutionPayload;
 };
 
 // Helper UI : retourne le ton selon le score (rouge/orange/vert).

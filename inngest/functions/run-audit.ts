@@ -165,12 +165,33 @@ export const runAuditFunction = inngest.createFunction(
       );
 
       // -------- Step 5 : Compute scores --------
+      // On passe aussi `history` (queries + responses + url_normalized)
+      // pour que stepComputeScores persiste un snapshot dans
+      // audit_history. Ce snapshot sert au calcul "vs precedent" du
+      // bloc Evolution dans le rapport.
+      const urlNormalized = (() => {
+        try {
+          const u = new URL(url);
+          return u.origin + u.pathname;
+        } catch {
+          return url;
+        }
+      })();
       const scores = await step.run("compute-scores", () =>
         stepComputeScores({
           audit_id,
           technical,
           visibility_scores: visibilityScores,
           persist: true,
+          history: {
+            url_normalized: urlNormalized,
+            queries: queriesResult.queries.map((q) => ({
+              id: q.id,
+              text: q.text,
+              category: q.category,
+            })),
+            responses: allResponses,
+          },
         })
       );
 

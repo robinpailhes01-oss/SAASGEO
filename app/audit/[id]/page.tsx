@@ -39,6 +39,7 @@ import { ChallengeCompetitor } from "@/components/report/ChallengeCompetitor";
 import { EmailCapture } from "@/components/report/EmailCapture";
 import { PoweredByAnkora } from "@/components/report/PoweredByAnkora";
 import { ManualQueries } from "@/components/report/ManualQueries";
+import { EvolutionPanel } from "@/components/report/EvolutionPanel";
 import { getManualQueries } from "@/lib/report/get-manual-queries";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -230,6 +231,9 @@ export default async function AuditReportPage({
           }
         }
       />
+
+      {/* Bloc 8.7 — Evolution mesuree (presence par cat + delta vs precedent) */}
+      <EvolutionPanel data={report.evolution} />
 
       {/* Bloc 9 — CTA principal (Calendly ou mailto fallback) */}
       <MainCta

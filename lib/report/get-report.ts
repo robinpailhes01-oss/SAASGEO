@@ -26,11 +26,13 @@ import {
   type CompetitorRanking,
   type PriorityAction,
   type ProviderScore,
+  type AllQueryRow,
   type EvolutionDelta,
   type EvolutionPayload,
   type PresenceByCategory,
   type PreviousSnapshot,
   type QueryCategory,
+  type QueryGeoLevel,
   type RecommendationsSummary,
   type ReportData,
   type WhyReason,
@@ -314,7 +316,7 @@ export async function getReport(auditId: string): Promise<ReportData | null> {
       .select("brand_name, industry, geo_zone, city, city_main, region, country, business_scope")
       .eq("audit_id", auditId)
       .maybeSingle(),
-    sb.from("queries").select("id").eq("audit_id", auditId),
+    sb.from("queries").select("id, source").eq("audit_id", auditId),
     sb
       .from("audit_technical")
       .select("category, score, checks")
@@ -394,6 +396,9 @@ export async function getReport(auditId: string): Promise<ReportData | null> {
   let top_competitors: CompetitorRanking[] = [];
   let city_main_platforms_above_brand: CompetitorRanking[] = [];
   let your_mentions_count = 0;
+  // Bloc "Toutes les questions testees" — vide si l'audit n'a pas de
+  // queries source='generated' (cas tres rare, defensif).
+  let all_queries: AllQueryRow[] = [];
   // Bloc Evolution : peut etre vide si l'audit n'a pas de queries
   let evolution: EvolutionPayload = {
     presence_per_category: { branded: 0, service: 0, comparative: 0 },
@@ -406,7 +411,7 @@ export async function getReport(auditId: string): Promise<ReportData | null> {
     const [queriesFullRes, responsesRes] = await Promise.all([
       sb
         .from("queries")
-        .select("id, text, category, position")
+        .select("id, text, category, position, source")
         .in("id", queryIds),
       sb
         .from("ai_responses")
@@ -416,10 +421,22 @@ export async function getReport(auditId: string): Promise<ReportData | null> {
 
     const queriesById = new Map<
       string,
-      { id: string; text: string; category: QueryCategory; position: number }
+      {
+        id: string;
+        text: string;
+        category: QueryCategory;
+        position: number;
+        source: string;
+      }
     >();
     for (const q of queriesFullRes.data ?? []) {
-      queriesById.set(q.id, q);
+      queriesById.set(q.id, {
+        id: q.id,
+        text: q.text,
+        category: q.category,
+        position: q.position,
+        source: (q as { source?: string }).source ?? "generated",
+      });
     }
 
     const responses = responsesRes.data ?? [];
@@ -694,6 +711,118 @@ export async function getReport(auditId: string): Promise<ReportData | null> {
       };
     });
 
+    // ----- Bloc "Toutes les questions testees" -----
+    // Pour chaque query source='generated', on agrege les 4 reponses
+    // associees pour produire une AllQueryRow lisible (geo_level +
+    // brand_mentioned + top_competitor). Les manuelles sont exclues
+    // — elles ont leur propre bloc ManualQueries.
+    {
+      const cityMainLower = (business?.city_main ?? "").toLowerCase().trim();
+      const cityLower = (business?.city ?? "").toLowerCase().trim();
+      const regionLower = (business?.region ?? "").toLowerCase().trim();
+
+      // Index analyses par response_id pour lookup O(1)
+      const analysesByResponseId = new Map<
+        string,
+        {
+          brand_mentioned: boolean | null;
+          competitors_cited: string[] | null;
+        }
+      >();
+      for (const a of analyses) {
+        analysesByResponseId.set(a.response_id, {
+          brand_mentioned: a.brand_mentioned,
+          competitors_cited: a.competitors_cited,
+        });
+      }
+
+      // Index responses par query_id pour lookup O(1) des 4 IA
+      const responsesByQueryId = new Map<string, string[]>();
+      for (const r of responses) {
+        const list = responsesByQueryId.get(r.query_id) ?? [];
+        list.push(r.id);
+        responsesByQueryId.set(r.query_id, list);
+      }
+
+      const generated = Array.from(queriesById.values()).filter(
+        (q) => q.source === "generated"
+      );
+
+      const rows: AllQueryRow[] = generated.map((q) => {
+        const responseIds = responsesByQueryId.get(q.id) ?? [];
+        const queryAnalyses = responseIds
+          .map((rid) => analysesByResponseId.get(rid))
+          .filter(
+            (a): a is NonNullable<typeof a> => a !== undefined
+          );
+
+        const brandMentioned = queryAnalyses.some(
+          (a) => a.brand_mentioned === true
+        );
+
+        // Top concurrent par frequence : agregeons les noms cites au
+        // travers des 4 reponses, puis prenons celui qui revient le
+        // plus. Garde la graphie originale du 1er match.
+        let topCompetitor: string | null = null;
+        if (!brandMentioned) {
+          const compFreq = new Map<
+            string,
+            { displayName: string; count: number }
+          >();
+          for (const a of queryAnalyses) {
+            for (const raw of a.competitors_cited ?? []) {
+              if (typeof raw !== "string") continue;
+              const trimmed = raw.trim();
+              if (!trimmed) continue;
+              const key = normalizeCompetitorKey(trimmed);
+              if (!key) continue;
+              const existing = compFreq.get(key);
+              if (existing) existing.count += 1;
+              else compFreq.set(key, { displayName: trimmed, count: 1 });
+            }
+          }
+          const sorted = [...compFreq.values()].sort(
+            (a, b) => b.count - a.count
+          );
+          topCompetitor = sorted[0]?.displayName ?? null;
+        }
+
+        // Classification geo : on teste dans l'ordre d'expressivite
+        // (city_main est la grande ville cible, ex: Montpellier ; city
+        // est la ville exacte locale, ex: Carnon ; region en backup).
+        // Note : si city_main === city (sameMainExact), city_main
+        // gagne ici, ce qui rejoint la categorisation pedagogique.
+        const textLower = q.text.toLowerCase();
+        let geoLevel: QueryGeoLevel = "national";
+        if (cityMainLower && textLower.includes(cityMainLower)) {
+          geoLevel = "city_main";
+        } else if (
+          cityLower &&
+          cityLower !== cityMainLower &&
+          textLower.includes(cityLower)
+        ) {
+          geoLevel = "city_exact";
+        } else if (regionLower && textLower.includes(regionLower)) {
+          geoLevel = "region";
+        }
+
+        return {
+          query_id: q.id,
+          text: q.text,
+          category: q.category,
+          position: q.position,
+          geo_level: geoLevel,
+          brand_mentioned: brandMentioned,
+          top_competitor: topCompetitor,
+        };
+      });
+
+      // Tri par position pour stabilite (l'ordre d'origine de
+      // generation par le LLM Sonnet).
+      rows.sort((a, b) => a.position - b.position);
+      all_queries = rows;
+    }
+
     // ----- Bloc Evolution : presence par cat + snapshot precedent -----
     // Cette logique reutilise queriesById / responsesById / analyses
     // deja peuples ci-dessus pour eviter des reads DB redondants.
@@ -869,5 +998,6 @@ export async function getReport(auditId: string): Promise<ReportData | null> {
     why_reasons,
     recommendations,
     evolution,
+    all_queries,
   };
 }

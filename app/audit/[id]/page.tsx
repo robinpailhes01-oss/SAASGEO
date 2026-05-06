@@ -30,6 +30,7 @@ import { Verdict } from "@/components/report/Verdict";
 import { LostOpportunities } from "@/components/report/LostOpportunities";
 import { TopCompetitors } from "@/components/report/TopCompetitors";
 import { AIResponsePreview } from "@/components/report/AIResponsePreview";
+import { AllQueriesPanel } from "@/components/report/AllQueriesPanel";
 import { LocationWarning } from "@/components/report/LocationWarning";
 import { WhyInvisible } from "@/components/report/WhyInvisible";
 import { PriorityActions } from "@/components/report/PriorityActions";
@@ -198,6 +199,15 @@ export default async function AuditReportPage({
           city_main: report.city_main,
           region: report.region,
         }}
+      />
+
+      {/* Bloc 5.5 — Toutes les questions testées (collapsible, gratuit) */}
+      <AllQueriesPanel
+        queries={report.all_queries}
+        brandName={report.brand_name}
+        cityMain={report.city_main}
+        city={report.city}
+        region={report.region}
       />
 
       {/* Bloc 6 — Pourquoi vous êtes invisible (3 cards verticales) */}

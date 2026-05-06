@@ -98,6 +98,37 @@ export type EvolutionPayload = {
   delta: EvolutionDelta | null;
 };
 
+// =====================================================================
+// Toutes les questions testees — bloc collapsible "30 questions"
+// =====================================================================
+
+// Niveau geographique d'une query, classe a partir du texte par
+// matching insensible a la casse contre business.city_main / city /
+// region. national = aucun match, queries sans ancrage local.
+export type QueryGeoLevel =
+  | "city_main" // ex: contient "Montpellier" (grande ville reference)
+  | "city_exact" // ex: contient "Carnon" (ville exacte)
+  | "region" // ex: contient "Hérault" / "Occitanie"
+  | "national"; // aucun match, queries sectorielles ou branded sans geo
+
+// Une ligne du bloc "Toutes les questions testees" : query +
+// agregat des 4 IA (brand_mentioned + concurrent principal cite si
+// la marque est absente).
+export type AllQueryRow = {
+  query_id: string;
+  text: string;
+  category: QueryCategory;
+  position: number;
+  geo_level: QueryGeoLevel;
+  // True si AU MOINS 1 IA des 4 cite la marque pour cette query.
+  brand_mentioned: boolean;
+  // Concurrent le plus cite dans les 4 reponses de cette query (le 1er
+  // par frequence). null si la marque est citee OU si aucun concurrent
+  // n'est cite. Permet d'afficher "Concurrent X cite a votre place"
+  // pour les queries ratees.
+  top_competitor: string | null;
+};
+
 export type ReportData = {
   // -- Audit metadata --
   audit_id: string;
@@ -160,6 +191,12 @@ export type ReportData = {
 
   // -- Bloc Evolution : presence par categorie + delta vs precedent --
   evolution: EvolutionPayload;
+
+  // -- Bloc "Toutes les questions testees" (collapsible) --
+  // Liste des 30 queries source='generated' avec agregat des 4 IA.
+  // Les manual queries (source='user') sont exclues — elles ont leur
+  // propre bloc ManualQueries.
+  all_queries: AllQueryRow[];
 };
 
 // Helper UI : retourne le ton selon le score (rouge/orange/vert).

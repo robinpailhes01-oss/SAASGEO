@@ -14,7 +14,7 @@
 // =====================================================================
 
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 
 import { createAdminClient } from "@/lib/supabase/server";
 import { ProgressView } from "@/components/progress/ProgressView";
@@ -49,6 +49,16 @@ export default async function AuditProgressPage({
     .maybeSingle();
 
   if (error || !data) notFound();
+
+  // Fallback instant : si l'audit est DEJA termine au moment ou l'user
+  // ouvre la page (cas frequent quand il revient apres avoir ferme
+  // l'onglet, ou quand le backend a fini avant le SSR), on redirige
+  // server-side directement vers le rapport. Pas de flash de page de
+  // chargement, pas de countdown, pas de risque de polling rate.
+  // status='failed' reste sur /progress pour afficher AuditFailedState.
+  if (data.status === "done") {
+    redirect(`/audit/${data.id}`);
+  }
 
   return <ProgressView initialAudit={data satisfies AuditStatusResponse} />;
 }

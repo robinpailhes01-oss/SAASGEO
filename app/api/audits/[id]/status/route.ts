@@ -61,10 +61,18 @@ export async function GET(
     return NextResponse.json({ error: "Audit introuvable." }, { status: 404 });
   }
 
-  // Cache court : on autorise 1s de stale pour absorber les rafales
-  // de polling sans surcharger Supabase. Les UPDATE Realtime ne sont
-  // pas concernes par ce cache (canal direct WebSocket).
+  // CACHE-CONTROL : aucun cache. C'est un endpoint de POLLING TEMPS
+  // REEL — chaque ms compte pour detecter la transition vers 'done'.
+  // Avant : "public, max-age=1, stale-while-revalidate=2" -> Vercel
+  // Edge / CDN servait du stale plusieurs secondes apres l'update DB,
+  // ce qui retardait (voire empechait) la redirection cote client. Bug
+  // observe sur audit bceb51bc : status='done' en DB mais le polling
+  // recevait encore une vieille reponse cachee. Fix : desactivation
+  // totale du cache.
   return NextResponse.json(data satisfies AuditStatusResponse, {
-    headers: { "cache-control": "public, max-age=1, stale-while-revalidate=2" },
+    headers: {
+      "cache-control": "private, no-store, no-cache, must-revalidate",
+      pragma: "no-cache",
+    },
   });
 }

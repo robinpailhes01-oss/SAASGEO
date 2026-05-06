@@ -15,7 +15,6 @@ import { ProgressHeader } from "./ProgressHeader";
 import { StepsList } from "./StepsList";
 import { EngagementTip } from "./EngagementTip";
 import { AuditFailedState } from "./AuditFailedState";
-import { AuditDoneCta } from "./AuditDoneCta";
 import type { AuditStatusResponse } from "@/app/api/audits/[id]/status/route";
 
 // =====================================================================
@@ -23,28 +22,46 @@ import type { AuditStatusResponse } from "@/app/api/audits/[id]/status/route";
 //
 // Sources de mise a jour (en parallele, redondantes par securite) :
 //   1. Supabase Realtime — channel UPDATE sur audits.id (instantane)
-//   2. Polling REST /api/audits/[id]/status toutes les 2s (rapproche
-//      pour donner une perception d'activite meme si progress=0)
+//   2. Polling REST /api/audits/[id]/status toutes les 2s (fallback)
 //
 // Etats terminaux :
-//   - status === "done" OU progress >= 100  -> <AuditDoneCta />
+//   - status === "done" -> router.replace(`/audit/${id}`) IMMEDIAT
+//     (pas d'ecran de celebration intermediaire — cf. brief "rediriger
+//     immediatement" pour eviter de garder l'user sur /progress alors
+//     que le rapport est pret).
 //   - status === "failed" -> <AuditFailedState />
 //
 // Etats non-terminaux avec actions utilisateur :
-//   - apres 5 min sans status terminal -> bandeau "L'analyse prend plus
-//     de temps que prevu" + 2 boutons :
-//       * "Verifier l'etat" : force un fetch immediat
-//       * "Relancer l'audit" : POST /abort + redirige vers /
+//   - apres 8 min sans status terminal -> bandeau "L'analyse prend plus
+//     de temps que prevu" + auto-abort silencieux + 2 boutons
+//     [Verifier l'etat] / [Relancer l'audit]
 //
-// Le bandeau ne masque PAS la liste des steps — l'utilisateur garde
-// le contexte visuel de ce qui a deja tourne.
+// MAPPING STATUT ENUM -> PROGRESS (defense en profondeur) :
+//   Le backend Inngest peut avoir un trou d'update (progress=0 alors
+//   que status='extracting'). Le helper effectiveProgress() projette
+//   un seuil minimum cote client a partir du status. Plus jamais
+//   "0% bloque" si le status avance correctement.
 // =====================================================================
 
 const POLL_MS = 2_000;
-// Apres 5 min sans status terminal, on affiche le bandeau d'actions.
-// Le pipeline tourne en moyenne 2-3 min en prod ; au-dela de 5 min on
-// considere que c'est anormal.
-const STUCK_TIMEOUT_MS = 5 * 60 * 1_000;
+// Brief : "Si status reste 'queued' ou 'scraping' depuis plus de 8
+// minutes -> afficher bouton 'Relancer l'audit' et marquer le status
+// 'failed' automatiquement."
+const STUCK_TIMEOUT_MS = 8 * 60 * 1_000;
+
+// Mapping status enum -> progression minimale. Si la DB n'a pas mis
+// a jour `progress` mais le `status` a avance, on utilise ce mapping
+// comme plancher pour ne pas afficher 0% bloque. Aligne avec le brief.
+const STATUS_PROGRESS_FLOOR: Record<string, number> = {
+  queued: 5,
+  scraping: 15,
+  extracting: 30,
+  querying: 50,
+  analyzing: 75,
+  scoring: 90,
+  done: 100,
+  failed: 0, // pas de projection, on garde le progress recu
+};
 
 type ProgressViewProps = {
   initialAudit: AuditStatusResponse;
@@ -59,8 +76,15 @@ function prettyDomain(url: string): string {
   }
 }
 
-// Texte temps estime selon le progress courant. Pas de chiffre invente
-// — fenetres realistes basees sur la duree moyenne mesuree (~2.5 min).
+// Progress effectif = max entre la valeur DB et le plancher du status
+// enum. Garantit qu'on n'affiche jamais 0% si le status est avance.
+function effectiveProgress(audit: AuditStatusResponse): number {
+  if (audit.status === "failed") return audit.progress;
+  const floor = STATUS_PROGRESS_FLOOR[audit.status] ?? 0;
+  return Math.max(audit.progress, floor);
+}
+
+// Texte temps estime selon le progress courant.
 function estimatedTimeLabel(progress: number): string {
   if (progress >= 95) return "Finalisation…";
   if (progress >= 70) return "Plus que quelques secondes…";
@@ -73,11 +97,15 @@ export function ProgressView({ initialAudit }: ProgressViewProps) {
   const router = useRouter();
   const [audit, setAudit] = React.useState<AuditStatusResponse>(initialAudit);
   const [showStuckBanner, setShowStuckBanner] = React.useState(false);
-  const [aborting, setAborting] = React.useState(false);
   const [refreshing, setRefreshing] = React.useState(false);
+  const [aborting, setAborting] = React.useState(false);
   const lastSerializedRef = React.useRef<string>(JSON.stringify(initialAudit));
+  // Garde-fou : si le router.replace a deja ete appele on n'enchaine
+  // pas plusieurs redirections (StrictMode + polling concurrent).
+  const redirectedRef = React.useRef(false);
 
-  // Helper : ne declenche un setState que si quelque chose a reellement change
+  // Helper : ne declenche un setState que si quelque chose a reellement
+  // change (evite les re-renders inutiles + animation).
   const updateIfChanged = React.useCallback((next: AuditStatusResponse) => {
     const ser = JSON.stringify(next);
     if (ser === lastSerializedRef.current) return;
@@ -86,10 +114,24 @@ export function ProgressView({ initialAudit }: ProgressViewProps) {
   }, []);
 
   const isFailed = audit.status === "failed";
+  // isDone declenche la redirection immediate. progress >= 100 sans
+  // status='done' est un filet de securite pour absorber un eventuel
+  // bug backend (status reste a 'scoring' alors que finalize a tourne).
   const isDone = audit.status === "done" || audit.progress >= 100;
   const isTerminal = isDone || isFailed;
 
-  // ---- Polling REST (fallback toujours actif jusqu'au terminal) ----
+  // ---- Redirection immediate vers le rapport quand isDone ----
+  // Brief : "Quand status === 'done' -> rediriger immediatement vers
+  // /audit/[id]". On utilise router.replace pour ne pas polluer
+  // l'historique (back depuis le rapport ne doit pas revenir sur /progress).
+  React.useEffect(() => {
+    if (!isDone) return;
+    if (redirectedRef.current) return;
+    redirectedRef.current = true;
+    router.replace(`/audit/${audit.id}`);
+  }, [isDone, audit.id, router]);
+
+  // ---- Polling REST (toutes les 2s jusqu'au terminal) ----
   React.useEffect(() => {
     if (isTerminal) return;
     let cancelled = false;
@@ -145,7 +187,11 @@ export function ProgressView({ initialAudit }: ProgressViewProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [audit.id, isTerminal]);
 
-  // ---- Detection blocage : > 5 min sans status terminal ----
+  // ---- Detection blocage : > 8 min sans status terminal ----
+  // Brief : "marquer le status 'failed' automatiquement". On call
+  // /abort en background des l'apparition du banner (silencieux —
+  // l'user voit deja le bouton "Relancer", il n'a pas besoin d'etre
+  // notifie de l'auto-fail).
   React.useEffect(() => {
     if (isTerminal) {
       setShowStuckBanner(false);
@@ -156,11 +202,20 @@ export function ProgressView({ initialAudit }: ProgressViewProps) {
     const remaining = STUCK_TIMEOUT_MS - elapsed;
     if (remaining <= 0) {
       setShowStuckBanner(true);
+      // Auto-abort silencieux pour eviter que l'audit reste pendu
+      fetch(`/api/audits/${audit.id}/abort`, { method: "POST" }).catch(
+        () => null
+      );
       return;
     }
-    const id = window.setTimeout(() => setShowStuckBanner(true), remaining);
+    const id = window.setTimeout(() => {
+      setShowStuckBanner(true);
+      fetch(`/api/audits/${audit.id}/abort`, { method: "POST" }).catch(
+        () => null
+      );
+    }, remaining);
     return () => window.clearTimeout(id);
-  }, [audit.created_at, isTerminal]);
+  }, [audit.created_at, audit.id, isTerminal]);
 
   // ---- Action "Verifier l'etat" : force un fetch immediat ----
   const handleRefresh = React.useCallback(async () => {
@@ -177,37 +232,45 @@ export function ProgressView({ initialAudit }: ProgressViewProps) {
     } catch {
       // Silencieux — le polling prochain reprendra
     } finally {
-      // Petit delai pour donner un feedback visible meme si la requete
-      // a ete instantanee.
       window.setTimeout(() => setRefreshing(false), 600);
     }
   }, [audit.id, refreshing, updateIfChanged]);
 
-  // ---- Action "Relancer l'audit" : POST /abort + redirige ----
+  // ---- Action "Relancer l'audit" : redirige vers / ----
+  // Note : /abort a deja ete call en background des l'apparition du
+  // banner, on n'a pas besoin de le re-call ici.
   const handleAbort = React.useCallback(async () => {
     if (aborting) return;
     setAborting(true);
-    try {
-      // Marque l'audit failed cote backend pour ne pas le laisser
-      // pendre indefiniment dans la liste des audits "queued/extracting".
-      // Echec d'API non-bloquant pour la nav (le user veut surtout repartir).
-      await fetch(`/api/audits/${audit.id}/abort`, {
-        method: "POST",
-      }).catch(() => null);
-    } finally {
-      toast.success("Vous pouvez relancer un nouvel audit.");
-      router.push("/");
-    }
-  }, [audit.id, aborting, router]);
+    toast.success("Vous pouvez relancer un nouvel audit.");
+    router.push("/");
+  }, [aborting, router]);
 
   const domain = prettyDomain(audit.url);
+  const progressEff = effectiveProgress(audit);
+
+  // Si isDone, on retourne un overlay minimal pendant que la
+  // redirection est en cours. Pas de celebration intermediaire —
+  // l'user va directement sur le rapport.
+  if (isDone) {
+    return (
+      <main className="min-h-screen bg-background py-12 sm:py-16">
+        <Container size="narrow">
+          <p className="text-center text-base text-ankora-text-soft inline-flex items-center justify-center w-full gap-2">
+            <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+            Redirection vers votre rapport…
+          </p>
+        </Container>
+      </main>
+    );
+  }
 
   return (
     <main className="min-h-screen bg-background py-8 sm:py-12">
       <Container size="narrow" className="space-y-8 sm:space-y-10">
         <ProgressHeader
           domain={domain}
-          progress={isFailed ? audit.progress : isDone ? 100 : audit.progress}
+          progress={isFailed ? audit.progress : progressEff}
           startedAt={audit.created_at}
           frozen={isTerminal}
         />
@@ -224,17 +287,17 @@ export function ProgressView({ initialAudit }: ProgressViewProps) {
               className="h-3.5 w-3.5 animate-spin"
               aria-hidden="true"
             />
-            Analyse en cours · {estimatedTimeLabel(audit.progress)}
+            Analyse en cours · {estimatedTimeLabel(progressEff)}
           </p>
         ) : null}
 
         {isFailed && <AuditFailedState errorMessage={audit.error_message} />}
 
-        {isDone && <AuditDoneCta auditId={audit.id} />}
-
         {!isTerminal && (
           <>
-            {/* Bandeau "stuck" : > 5 min sans status terminal */}
+            {/* Bandeau "stuck" : > 8 min sans status terminal. L'audit
+                a deja ete marque failed en background (auto-abort) — on
+                affiche juste les actions pour le user. */}
             {showStuckBanner && (
               <Card
                 className="border-2 border-warning/40 bg-warning/5"
@@ -252,9 +315,8 @@ export function ProgressView({ initialAudit }: ProgressViewProps) {
                       Analyse plus longue que prévu
                     </p>
                     <p className="mt-1 text-sm sm:text-base text-ankora-text leading-snug">
-                      L&apos;analyse prend plus de temps que prévu. Pas
-                      d&apos;inquiétude, vous pouvez vérifier l&apos;état ou
-                      relancer un nouvel audit.
+                      L&apos;analyse prend plus de temps que prévu. Vous
+                      pouvez vérifier l&apos;état ou relancer un nouvel audit.
                     </p>
                   </div>
                   <div className="flex flex-col sm:flex-row gap-2 shrink-0 w-full sm:w-auto">
@@ -314,7 +376,7 @@ export function ProgressView({ initialAudit }: ProgressViewProps) {
             )}
 
             <EngagementTip />
-            <StepsList progress={audit.progress} />
+            <StepsList progress={progressEff} />
           </>
         )}
       </Container>

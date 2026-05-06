@@ -1,12 +1,15 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { AlertTriangle, Loader2, RefreshCw, RotateCcw } from "lucide-react";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 
 import { createClient } from "@/lib/supabase/client";
 import { Container } from "@/components/layout/Container";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { toast } from "@/components/ui/sonner";
 
 import { ProgressHeader } from "./ProgressHeader";
 import { StepsList } from "./StepsList";
@@ -18,36 +21,36 @@ import type { AuditStatusResponse } from "@/app/api/audits/[id]/status/route";
 // =====================================================================
 // <ProgressView /> — orchestrateur de la page de progression.
 //
-// Sources de mise à jour (en parallèle, redondantes par sécurité) :
-//   1. Supabase Realtime — channel UPDATE sur audits.id (instantané)
-//   2. Polling REST /api/audits/[id]/status toutes les 3 s (fallback
-//      au cas où Realtime n'est pas activé sur la table ou se déco)
+// Sources de mise a jour (en parallele, redondantes par securite) :
+//   1. Supabase Realtime — channel UPDATE sur audits.id (instantane)
+//   2. Polling REST /api/audits/[id]/status toutes les 2s (rapproche
+//      pour donner une perception d'activite meme si progress=0)
 //
-// Le state est un single source of truth (`audit`). Les deux mécanismes
-// l'alimentent via setAudit ; un useRef évite de re-render si la donnée
-// reçue est identique à la précédente (économie d'animation pour rien).
-//
-// États terminaux :
+// Etats terminaux :
 //   - status === "done" OU progress >= 100  -> <AuditDoneCta />
-//     (la condition `progress >= 100` est un filet de securite : si
-//     un bug backend laisse le status a "querying" mais que le
-//     pipeline a bien termine, on debloque quand meme l'utilisateur
-//     plutot que de le laisser pour toujours sur la page progression)
 //   - status === "failed" -> <AuditFailedState />
-//   - bouton secours apres 6 min : redirige manuellement vers le
-//     rapport (la page rapport bouncera back ici si le pipeline
-//     n'est pas vraiment fini, donc pas de risque utilisateur)
+//
+// Etats non-terminaux avec actions utilisateur :
+//   - apres 5 min sans status terminal -> bandeau "L'analyse prend plus
+//     de temps que prevu" + 2 boutons :
+//       * "Verifier l'etat" : force un fetch immediat
+//       * "Relancer l'audit" : POST /abort + redirige vers /
+//
+// Le bandeau ne masque PAS la liste des steps — l'utilisateur garde
+// le contexte visuel de ce qui a deja tourne.
 // =====================================================================
 
-const POLL_MS = 3_000;
-const TIMEOUT_MS = 10 * 60 * 1_000;
-const SAFETY_BUTTON_MS = 6 * 60 * 1_000;
+const POLL_MS = 2_000;
+// Apres 5 min sans status terminal, on affiche le bandeau d'actions.
+// Le pipeline tourne en moyenne 2-3 min en prod ; au-dela de 5 min on
+// considere que c'est anormal.
+const STUCK_TIMEOUT_MS = 5 * 60 * 1_000;
 
 type ProgressViewProps = {
   initialAudit: AuditStatusResponse;
 };
 
-// Extrait un domaine lisible depuis une URL stockée
+// Extrait un domaine lisible depuis une URL stockee
 function prettyDomain(url: string): string {
   try {
     return new URL(url).hostname.replace(/^www\./, "");
@@ -56,13 +59,25 @@ function prettyDomain(url: string): string {
   }
 }
 
+// Texte temps estime selon le progress courant. Pas de chiffre invente
+// — fenetres realistes basees sur la duree moyenne mesuree (~2.5 min).
+function estimatedTimeLabel(progress: number): string {
+  if (progress >= 95) return "Finalisation…";
+  if (progress >= 70) return "Plus que quelques secondes…";
+  if (progress >= 40) return "Résultats dans environ 2 minutes";
+  if (progress >= 10) return "Résultats dans environ 3 minutes";
+  return "Résultats dans environ 3 à 4 minutes";
+}
+
 export function ProgressView({ initialAudit }: ProgressViewProps) {
+  const router = useRouter();
   const [audit, setAudit] = React.useState<AuditStatusResponse>(initialAudit);
-  const [showTimeoutNote, setShowTimeoutNote] = React.useState(false);
-  const [showSafetyButton, setShowSafetyButton] = React.useState(false);
+  const [showStuckBanner, setShowStuckBanner] = React.useState(false);
+  const [aborting, setAborting] = React.useState(false);
+  const [refreshing, setRefreshing] = React.useState(false);
   const lastSerializedRef = React.useRef<string>(JSON.stringify(initialAudit));
 
-  // Helper : ne déclenche un setState que si quelque chose a réellement changé
+  // Helper : ne declenche un setState que si quelque chose a reellement change
   const updateIfChanged = React.useCallback((next: AuditStatusResponse) => {
     const ser = JSON.stringify(next);
     if (ser === lastSerializedRef.current) return;
@@ -70,9 +85,6 @@ export function ProgressView({ initialAudit }: ProgressViewProps) {
     setAudit(next);
   }, []);
 
-  // Conditions terminales — relaxees pour absorber un eventuel bug
-  // backend ou Inngest replay qui laisserait progress=100 sans
-  // status='done'.
   const isFailed = audit.status === "failed";
   const isDone = audit.status === "done" || audit.progress >= 100;
   const isTerminal = isDone || isFailed;
@@ -117,7 +129,6 @@ export function ProgressView({ initialAudit }: ProgressViewProps) {
           },
           (payload) => {
             const row = payload.new as Partial<AuditStatusResponse>;
-            // On reconstruit un objet complet en mergeant l'état précédent
             updateIfChanged({
               ...audit,
               ...row,
@@ -126,50 +137,68 @@ export function ProgressView({ initialAudit }: ProgressViewProps) {
         )
         .subscribe();
     } catch {
-      // Si Realtime n'est pas activé, le polling prend le relais.
+      // Si Realtime n'est pas active, le polling prend le relais.
     }
     return () => {
       if (channel) sb.removeChannel(channel);
     };
-    // On veut un seul subscribe par audit id — on ne re-subscribe pas
-    // sur chaque changement de `audit`. L'effet ci-dessous lit `audit`
-    // via la fermeture mais c'est sans risque (on ne fait que merge).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [audit.id, isTerminal]);
 
-  // ---- Timeout 10 min : on n'arrête pas l'attente, on rassure ----
-  // ---- Bouton secours 6 min : permet de forcer la redirection ----
+  // ---- Detection blocage : > 5 min sans status terminal ----
   React.useEffect(() => {
-    if (isTerminal) return;
+    if (isTerminal) {
+      setShowStuckBanner(false);
+      return;
+    }
     const startedAtMs = new Date(audit.created_at).getTime();
     const elapsed = Date.now() - startedAtMs;
-
-    // Note d'attente prolongee (10 min)
-    const remainingNote = TIMEOUT_MS - elapsed;
-    let noteTimer: number | null = null;
-    if (remainingNote <= 0) {
-      setShowTimeoutNote(true);
-    } else {
-      noteTimer = window.setTimeout(() => setShowTimeoutNote(true), remainingNote);
+    const remaining = STUCK_TIMEOUT_MS - elapsed;
+    if (remaining <= 0) {
+      setShowStuckBanner(true);
+      return;
     }
-
-    // Bouton secours (6 min) — discret mais permet de partir si bug
-    const remainingSafety = SAFETY_BUTTON_MS - elapsed;
-    let safetyTimer: number | null = null;
-    if (remainingSafety <= 0) {
-      setShowSafetyButton(true);
-    } else {
-      safetyTimer = window.setTimeout(
-        () => setShowSafetyButton(true),
-        remainingSafety
-      );
-    }
-
-    return () => {
-      if (noteTimer !== null) window.clearTimeout(noteTimer);
-      if (safetyTimer !== null) window.clearTimeout(safetyTimer);
-    };
+    const id = window.setTimeout(() => setShowStuckBanner(true), remaining);
+    return () => window.clearTimeout(id);
   }, [audit.created_at, isTerminal]);
+
+  // ---- Action "Verifier l'etat" : force un fetch immediat ----
+  const handleRefresh = React.useCallback(async () => {
+    if (refreshing) return;
+    setRefreshing(true);
+    try {
+      const res = await fetch(`/api/audits/${audit.id}/status`, {
+        cache: "no-store",
+      });
+      if (res.ok) {
+        const data = (await res.json()) as AuditStatusResponse;
+        updateIfChanged(data);
+      }
+    } catch {
+      // Silencieux — le polling prochain reprendra
+    } finally {
+      // Petit delai pour donner un feedback visible meme si la requete
+      // a ete instantanee.
+      window.setTimeout(() => setRefreshing(false), 600);
+    }
+  }, [audit.id, refreshing, updateIfChanged]);
+
+  // ---- Action "Relancer l'audit" : POST /abort + redirige ----
+  const handleAbort = React.useCallback(async () => {
+    if (aborting) return;
+    setAborting(true);
+    try {
+      // Marque l'audit failed cote backend pour ne pas le laisser
+      // pendre indefiniment dans la liste des audits "queued/extracting".
+      // Echec d'API non-bloquant pour la nav (le user veut surtout repartir).
+      await fetch(`/api/audits/${audit.id}/abort`, {
+        method: "POST",
+      }).catch(() => null);
+    } finally {
+      toast.success("Vous pouvez relancer un nouvel audit.");
+      router.push("/");
+    }
+  }, [audit.id, aborting, router]);
 
   const domain = prettyDomain(audit.url);
 
@@ -183,40 +212,105 @@ export function ProgressView({ initialAudit }: ProgressViewProps) {
           frozen={isTerminal}
         />
 
+        {/* Temps estime sous la barre — uniquement si non-terminal et
+            pas dans l'etat stuck. Donne au client un horizon clair. */}
+        {!isTerminal && !showStuckBanner ? (
+          <p
+            className="-mt-4 sm:-mt-5 text-center text-sm text-ankora-text-muted inline-flex items-center justify-center w-full gap-2"
+            role="status"
+            aria-live="polite"
+          >
+            <Loader2
+              className="h-3.5 w-3.5 animate-spin"
+              aria-hidden="true"
+            />
+            Analyse en cours · {estimatedTimeLabel(audit.progress)}
+          </p>
+        ) : null}
+
         {isFailed && <AuditFailedState errorMessage={audit.error_message} />}
 
         {isDone && <AuditDoneCta auditId={audit.id} />}
 
         {!isTerminal && (
           <>
-            {showTimeoutNote && (
-              <div
-                className="rounded-2xl border border-warning/30 bg-warning/5 p-4 text-sm text-ankora-text"
+            {/* Bandeau "stuck" : > 5 min sans status terminal */}
+            {showStuckBanner && (
+              <Card
+                className="border-2 border-warning/40 bg-warning/5"
                 role="status"
               >
-                L&apos;audit prend un peu plus de temps que prévu. Pas
-                d&apos;inquiétude, on continue le travail — gardez l&apos;onglet
-                ouvert.
-              </div>
-            )}
-
-            {/* Bouton secours apres 6 min : permet de partir manuellement
-                vers le rapport. Si le pipeline n'est pas vraiment fini,
-                la page rapport (server component) detectera status !== 'done'
-                et redirigera automatiquement ici. Donc pas de risque. */}
-            {showSafetyButton && (
-              <div
-                className="flex flex-col items-center gap-3 rounded-2xl border border-ankora-border bg-secondary/40 p-4 text-center"
-                role="status"
-              >
-                <p className="text-sm text-ankora-text-soft">
-                  Si la page ne se met pas à jour, vous pouvez essayer
-                  d&apos;ouvrir directement votre rapport.
-                </p>
-                <Button asChild variant="outline" size="sm">
-                  <Link href={`/audit/${audit.id}`}>Voir mon rapport</Link>
-                </Button>
-              </div>
+                <CardContent className="pt-5 pb-5 px-5 sm:px-6 flex flex-col sm:flex-row items-start sm:items-center gap-4">
+                  <span
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-warning/15 text-warning"
+                    aria-hidden="true"
+                  >
+                    <AlertTriangle className="h-5 w-5" />
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-semibold uppercase tracking-wider text-warning">
+                      Analyse plus longue que prévu
+                    </p>
+                    <p className="mt-1 text-sm sm:text-base text-ankora-text leading-snug">
+                      L&apos;analyse prend plus de temps que prévu. Pas
+                      d&apos;inquiétude, vous pouvez vérifier l&apos;état ou
+                      relancer un nouvel audit.
+                    </p>
+                  </div>
+                  <div className="flex flex-col sm:flex-row gap-2 shrink-0 w-full sm:w-auto">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleRefresh}
+                      disabled={refreshing}
+                      className="w-full sm:w-auto"
+                    >
+                      {refreshing ? (
+                        <>
+                          <Loader2
+                            className="mr-1.5 h-4 w-4 animate-spin"
+                            aria-hidden="true"
+                          />
+                          Vérification…
+                        </>
+                      ) : (
+                        <>
+                          <RefreshCw
+                            className="mr-1.5 h-4 w-4"
+                            aria-hidden="true"
+                          />
+                          Vérifier l&apos;état
+                        </>
+                      )}
+                    </Button>
+                    <Button
+                      variant="default"
+                      size="sm"
+                      onClick={handleAbort}
+                      disabled={aborting}
+                      className="w-full sm:w-auto"
+                    >
+                      {aborting ? (
+                        <>
+                          <Loader2
+                            className="mr-1.5 h-4 w-4 animate-spin"
+                            aria-hidden="true"
+                          />
+                          Redirection…
+                        </>
+                      ) : (
+                        <>
+                          <RotateCcw
+                            className="mr-1.5 h-4 w-4"
+                            aria-hidden="true"
+                          />
+                          Relancer l&apos;audit
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
             )}
 
             <EngagementTip />

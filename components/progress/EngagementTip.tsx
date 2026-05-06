@@ -7,23 +7,31 @@ import { Lightbulb } from "lucide-react";
 // =====================================================================
 // <EngagementTip /> — message rotatif pendant l'attente.
 //
-// Brief Bloc 5 : "Bonus apprécié — petit message qui change toutes
-// les 30s pendant l'attente". Garde le prospect engagé.
+// Garde le prospect engage pendant les 3-4 minutes du pipeline en
+// faisant defiler des tips chiffres (anecdotes produit + chiffres
+// marche). Rotation 8s : suffisamment lent pour lire, suffisamment
+// rapide pour signaler "ca tourne, on est connecte".
 //
-// Tips choisis pour entretenir la curiosité (chiffres, anecdotes
-// produit) sans verser dans le commercial agressif.
+// Tous les chiffres cites sont sources internes (mecaniques Ankora :
+// 51 criteres, 30 questions...) ou marche (1.2% commerces locaux,
+// Foursquare 49%) — coherent avec la regle "jamais de chiffre
+// fantaisiste" appliquee partout dans le rapport.
 // =====================================================================
 
 const TIPS: string[] = [
-  "70% des Français utiliseront une IA pour leurs achats en 2026.",
-  "Notre audit vérifie 51 critères techniques GEO sur votre site.",
+  // Tips brief (priorite editoriale forte — mises en avant)
+  "Une page « À propos » détaillée multiplie par 2 vos chances d'être citée.",
+  "Foursquare alimente 49 % des résultats locaux de ChatGPT — la plupart des commerces l'ignorent.",
+  "Les IA retournent 3 à 5 résultats maximum. Soit vous en faites partie, soit vous n'existez pas.",
+  "Perplexity crawle le web en temps réel — vos actions GEO peuvent être visibles en 24 h.",
+  "1,2 % seulement des commerces locaux sont cités par les IA. Ankora mesure où vous en êtes.",
+  // Tips internes (mecaniques Ankora)
+  "Notre audit vérifie 51 critères techniques sur votre site.",
   "Chaque IA est interrogée 30 fois avec des questions clients réalistes.",
   "ChatGPT recommande en moyenne 3 marques par requête commerciale.",
-  "Une page « À propos » détaillée multiplie par 2 vos chances d'être citée.",
-  "Les IA conversationnelles préfèrent les sites avec un sitemap.xml clair.",
 ];
 
-const ROTATION_MS = 30_000;
+const ROTATION_MS = 8_000;
 
 export function EngagementTip() {
   const [index, setIndex] = React.useState(0);

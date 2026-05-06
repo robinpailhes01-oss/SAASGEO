@@ -27,8 +27,16 @@ import { cn } from "@/lib/utils";
 
 type LostOpportunitiesProps = {
   globalScore: number;
-  totalQueries: number; // generalement 30
-  brandMentionsCount: number; // sur les 4 IA combinees (max 120)
+  // Mentions de la marque sur la base du score (non-branded + local
+  // si scope=local). MEME compteur que `your_mentions_count` du
+  // podium TopCompetitors et que `mention_rate` du Hero — c'est ce
+  // qui garantit la coherence des chiffres affiches dans tout le
+  // rapport. Avant le fix d'alignement, on utilisait brand_mentions
+  // sur les 120 reponses (incluant les 40 branded ou la marque est
+  // forcement citee), ce qui faisait afficher "33 vous trouvent"
+  // alors que le Hero disait "5 vous trouvent". Incoherent.
+  yourMentions: number;
+  scoreBaseResponsesCount: number;
   // Localisation pour personnaliser la phrase principale
   cityMain?: string | null; // grande ville de reference (Montpellier)
   city?: string | null;     // ville exacte (Carnon)
@@ -36,14 +44,18 @@ type LostOpportunitiesProps = {
 };
 
 // Calcul de "vous trouvent / ne vous trouvent pas" sur une base 100 :
-// proxy = nombre de reponses ou brand_mentioned=true / total_responses.
-// Plus precis que diviser par totalQueries car couvre les 120 responses.
+// proxy = nombre de reponses ou brand_mentioned=true (filtre score)
+// / total_responses (filtre score). Aligne sur Hero + podium pour
+// coherence absolue.
 function computeFoundPct(
-  totalQueries: number,
-  brandMentionsCount: number
+  yourMentions: number,
+  scoreBaseResponsesCount: number
 ): number {
-  const totalResponses = Math.max(1, totalQueries * 4);
-  return Math.max(0, Math.min(100, Math.round((brandMentionsCount / totalResponses) * 100)));
+  const totalResponses = Math.max(1, scoreBaseResponsesCount);
+  return Math.max(
+    0,
+    Math.min(100, Math.round((yourMentions / totalResponses) * 100))
+  );
 }
 
 // Estimation pedagogique : si 100 personnes/mois cherchent ce type
@@ -77,14 +89,14 @@ function shortenIndustry(industry: string | null | undefined): string {
 
 export function LostOpportunities({
   globalScore,
-  totalQueries,
-  brandMentionsCount,
+  yourMentions,
+  scoreBaseResponsesCount,
   cityMain,
   city,
   industry,
 }: LostOpportunitiesProps) {
   const tone = scoreTone(globalScore);
-  const foundPct = computeFoundPct(totalQueries, brandMentionsCount);
+  const foundPct = computeFoundPct(yourMentions, scoreBaseResponsesCount);
   const missingPct = 100 - foundPct;
   const perDay = estimatePerDay(missingPct);
 

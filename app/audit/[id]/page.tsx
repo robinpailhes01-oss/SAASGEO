@@ -173,11 +173,16 @@ export default async function AuditReportPage({
         brandMentionsCount={report.brand_mentions_count}
       />
 
-      {/* Bloc 3 — Manque à gagner (narrative ville + secteur + ratio 33/67) */}
+      {/* Bloc 3 — Manque à gagner (narrative ville + secteur + ratio
+          aligne sur le score : on utilise your_mentions_count et
+          score_base_responses_count, pas brand_mentions_count/120,
+          pour eviter l'incoherence "Hero dit 5 vous trouvent /
+          LostOpportunities dit 33 vous trouvent" qui apparaissait
+          quand le bloc divisait par 120 (incluant les branded). */}
       <LostOpportunities
         globalScore={report.global_score}
-        totalQueries={report.total_queries}
-        brandMentionsCount={report.brand_mentions_count}
+        yourMentions={report.your_mentions_count}
+        scoreBaseResponsesCount={report.score_base_responses_count}
         cityMain={report.city_main}
         city={report.city}
         industry={report.industry}

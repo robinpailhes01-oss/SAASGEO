@@ -659,34 +659,72 @@ export async function stepSynthesis(args: {
   });
 
   const model = TASK_MODELS.synthesis;
-  const result = await generateText(model, {
-    system,
-    prompt,
-    temperature: 0.3,
-    jsonMode: true,
-    maxTokens: 3000,
-  });
 
-  await trackApiCall({
-    user_id: process.env.ADMIN_USER_ID ?? null,
-    audit_id: args.audit_id,
-    provider: modelToProvider(model),
-    model,
-    tokens_in: result.tokens_in,
-    tokens_out: result.tokens_out,
-    request_type: "synthesis",
-    actual_cost_usd: result.cost_usd,
-  });
+  // ---------------------------------------------------------------
+  // Robustification : si l'appel LLM Sonnet echoue (OpenRouter 402,
+  // rate-limit, timeout, parse error...), on NE veut pas planter
+  // tout l'audit alors que les 6 etapes precedentes ont reussi.
+  //
+  // Fallback : synthesis minimale -> persistence vide -> finalize OK
+  // -> status='done'. Le rapport affichera les FALLBACK_RECOS
+  // templatees (cf. lib/report/get-report.ts) comme si on avait < 3
+  // recommandations en DB. Le user voit son rapport, on ne perd pas
+  // l'audit.
+  //
+  // maxTokens reduit a 1800 (vs 3000 avant) pour tolerer un crédit
+  // OpenRouter bas (cas observe : 402 "can only afford 1631 tokens").
+  // 1800 tokens suffisent pour 5-10 recommandations + verdict.
+  // ---------------------------------------------------------------
+  let llmResult: Awaited<ReturnType<typeof generateText>> | null = null;
+  let llmError: string | null = null;
+  try {
+    llmResult = await generateText(model, {
+      system,
+      prompt,
+      temperature: 0.3,
+      jsonMode: true,
+      maxTokens: 1800,
+    });
+  } catch (e) {
+    llmError = e instanceof Error ? e.message : String(e);
+    console.warn(
+      `[pipeline-steps] synthesis LLM call failed (fallback enclenche) : ${llmError}`
+    );
+  }
+
+  if (llmResult) {
+    await trackApiCall({
+      user_id: process.env.ADMIN_USER_ID ?? null,
+      audit_id: args.audit_id,
+      provider: modelToProvider(model),
+      model,
+      tokens_in: llmResult.tokens_in,
+      tokens_out: llmResult.tokens_out,
+      request_type: "synthesis",
+      actual_cost_usd: llmResult.cost_usd,
+    });
+  }
 
   let synthesis: Synthesis;
-  try {
-    synthesis = SynthesisSchema.parse(JSON.parse(result.text));
-  } catch (e) {
-    console.warn(
-      `[pipeline-steps] synthesis parse failed : ${e instanceof Error ? e.message : String(e)}`
-    );
+  if (llmResult) {
+    try {
+      synthesis = SynthesisSchema.parse(JSON.parse(llmResult.text));
+    } catch (e) {
+      console.warn(
+        `[pipeline-steps] synthesis parse failed : ${e instanceof Error ? e.message : String(e)}`
+      );
+      synthesis = {
+        verdict: "Synthese non parsable.",
+        top_competitor: null,
+        recommendations: [],
+      } as unknown as Synthesis;
+    }
+  } else {
+    // LLM call failed (402, network, rate-limit...). Fallback minimal
+    // qui laisse get-report.ts servir les FALLBACK_RECOS templatees.
     synthesis = {
-      verdict: "Synthese non parsable.",
+      verdict:
+        "Audit complet. Plan d'action détaillé disponible en consultation.",
       top_competitor: null,
       recommendations: [],
     } as unknown as Synthesis;

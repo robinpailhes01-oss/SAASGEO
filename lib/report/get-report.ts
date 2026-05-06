@@ -743,8 +743,13 @@ export async function getReport(auditId: string): Promise<ReportData | null> {
     const pickSamples = (list: typeof candidates): typeof candidates => {
       const picked: typeof candidates = [];
       const seenProviders = new Set<AIProvider>();
+      // Multi-pass : evite de prendre 2 samples du meme query_id
+      // (sinon avec 3 passes/query on pourrait montrer 2 versions
+      // tres similaires de la meme question — sans valeur ajoutee).
+      const seenQueryIds = new Set<string>();
       for (const c of list) {
         if (picked.length >= 2) break;
+        if (seenQueryIds.has(c.query.id)) continue;
         // Diversifie les providers entre les 2 picks
         if (
           picked.length === 1 &&
@@ -756,6 +761,7 @@ export async function getReport(auditId: string): Promise<ReportData | null> {
         }
         picked.push(c);
         seenProviders.add(c.response.provider);
+        seenQueryIds.add(c.query.id);
       }
       return picked;
     };

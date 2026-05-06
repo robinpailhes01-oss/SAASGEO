@@ -213,11 +213,14 @@ export async function persistAiResponses(args: {
   // toQueryIdMap normalise vers Record sans planter.
   const idMap = toQueryIdMap(args.query_id_map);
 
-  // Insert ai_responses
+  // Insert ai_responses (multi-pass : 1 ligne par (query, provider,
+  // pass_index) — peut donner plusieurs lignes par paire (query,
+  // provider). Cf. lib/ai/visibility-tracker PASSES_PER_CATEGORY.
   const responseRows: DB["ai_responses"]["Insert"][] = args.responses.map(
     (r) => ({
       query_id: lookupQueryId(idMap, r.query_id),
       provider: r.provider,
+      pass_index: r.pass_index ?? 1,
       model: r.model,
       raw_response: r.response_text || null,
       sources: r.sources as unknown as DB["ai_responses"]["Insert"]["sources"],
@@ -229,20 +232,24 @@ export async function persistAiResponses(args: {
     })
   );
 
-  // Bulk insert avec retour des IDs
+  // Bulk insert avec retour des IDs (incluant pass_index pour pouvoir
+  // re-mapper les analyses sur la BONNE ligne — sinon plusieurs passes
+  // pour la meme (query, provider) collisionneraient).
   const { data: inserted, error } = await sb
     .from("ai_responses")
     .insert(responseRows)
-    .select("id, query_id, provider");
+    .select("id, query_id, provider, pass_index");
   if (error || !inserted) {
     console.error(`[persist] ai_responses failed : ${error?.message}`);
     return;
   }
 
-  // Map (query_id_supabase + provider) → response_id_supabase
+  // Map (query_id_supabase + provider + pass_index) → response_id.
+  // Cle a 3 composantes obligatoire avec multi-pass : sans pass_index
+  // on ecraserait les analyses des passes 2/3 sur la pass 1.
   const responseIdMap = new Map<string, string>();
   for (const r of inserted) {
-    responseIdMap.set(`${r.query_id}|${r.provider}`, r.id);
+    responseIdMap.set(`${r.query_id}|${r.provider}|${r.pass_index}`, r.id);
   }
 
   // Insert ai_response_analysis pour chaque response qui a une analysis
@@ -250,7 +257,10 @@ export async function persistAiResponses(args: {
   for (const r of args.responses) {
     if (!r.analysis) continue;
     const queryIdSb = lookupQueryId(idMap, r.query_id);
-    const respId = responseIdMap.get(`${queryIdSb}|${r.provider}`);
+    const passIndex = r.pass_index ?? 1;
+    const respId = responseIdMap.get(
+      `${queryIdSb}|${r.provider}|${passIndex}`
+    );
     if (!respId) continue;
     analysisRows.push({
       response_id: respId,

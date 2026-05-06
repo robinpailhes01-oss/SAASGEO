@@ -341,13 +341,15 @@ export function AllQueriesPanel({
                   brandName={brandName}
                 />
               ))}
-              <p className="text-center text-xs text-ankora-text-muted pt-2">
+              <p className="text-center text-xs text-ankora-text-muted pt-2 leading-relaxed">
                 Toutes les questions ont été posées aux 4 IA (ChatGPT,
-                Claude, Perplexity, Gemini) — soit{" "}
-                <span className="font-mono font-semibold">
-                  {queries.length * 4}
-                </span>{" "}
-                réponses analysées.
+                Claude, Perplexity, Gemini). <strong>Multi-pass</strong> :
+                chaque question est exécutée 1 à 3 fois selon sa
+                volatilité (1 pour les questions branded, 2 pour les
+                questions service, 3 pour les comparatives) afin de
+                neutraliser la stochasticité naturelle des LLM. Une
+                question compte comme &laquo; vous trouve &raquo; dès
+                qu&apos;au moins une exécution cite votre marque.
               </p>
             </div>
           </motion.div>

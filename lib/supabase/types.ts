@@ -73,6 +73,7 @@ export type Database = {
           id: string
           latency_ms: number | null
           model: string
+          pass_index: number
           provider: Database["public"]["Enums"]["ai_provider"]
           query_id: string
           raw_response: string | null
@@ -87,6 +88,7 @@ export type Database = {
           id?: string
           latency_ms?: number | null
           model: string
+          pass_index?: number
           provider: Database["public"]["Enums"]["ai_provider"]
           query_id: string
           raw_response?: string | null
@@ -101,6 +103,7 @@ export type Database = {
           id?: string
           latency_ms?: number | null
           model?: string
+          pass_index?: number
           provider?: Database["public"]["Enums"]["ai_provider"]
           query_id?: string
           raw_response?: string | null

@@ -146,6 +146,10 @@ export const runManualQueriesFunction = inngest.createFunction(
             // taches max). Reduit a 2 pour eviter les rate-limits sur
             // les API qui throttlent agressivement (ex: Anthropic).
             concurrency: 2,
+            // Manual queries : force 1 pass quelle que soit la categorie.
+            // Le user ajoute 1-3 queries iterativement, on veut un cout
+            // minimal (pas de multi-pass automatique sur 'comparative').
+            passes_override: 1,
             verbose: false,
             only_provider: provider,
           });

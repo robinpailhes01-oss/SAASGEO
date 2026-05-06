@@ -46,7 +46,42 @@ export interface VisibilityResponse {
   analysis: FullMentionResult | null;
   // Cout cumule (visibility + analysis)
   total_cost_eur: number;
+  // Index du pass (1..N) pour le multi-pass. Permet de stocker
+  // plusieurs reponses par (query, provider) et de mesurer la variance
+  // stochastique des LLM. Cf. PASSES_PER_CATEGORY.
+  pass_index: number;
 }
+
+// Multi-pass : nombre d'executions independantes de la meme query
+// par le meme provider, en fonction de la categorie. Plus la
+// categorie est volatile (listy, comparative), plus on multiplie les
+// passes pour stabiliser la mesure.
+//
+// Variance observee (T=0.7, conditions par defaut des chats) :
+//   - branded   : tres faible — l'IA connait ou pas la marque,
+//                 reponses ~80% identiques d'un appel a l'autre
+//   - service   : moyenne — listes courtes, 2-3 candidats peuvent
+//                 sortir alternativement
+//   - comparative : forte — "top 5 X a Y" peut produire 5+ reponses
+//                 differentes legerement chevauchantes. C'est la
+//                 categorie la plus exposee a la stochasticite
+//                 perçue par l'utilisateur final ("hier ChatGPT
+//                 m'avait cite, aujourd'hui non")
+//
+// Cout total visibility tracking avec ces ratios :
+//   10 branded x 1 + 10 service x 2 + 10 comparative x 3 = 60
+//   x 4 IA = 240 calls (vs 120 avant) ~= cout 2x.
+//
+// Si le nombre de queries augmente (manual / known_competitor
+// injectees), le ratio reste identique : N passes par categorie.
+export const PASSES_PER_CATEGORY: Record<
+  VisibilityQuery["category"],
+  number
+> = {
+  branded: 1,
+  service: 2,
+  comparative: 3,
+};
 
 interface RunOptions {
   brand_name: string;
@@ -60,6 +95,11 @@ interface RunOptions {
   // Optionnel : filtre sur un seul provider (utilise par Inngest fan-out
   // pour parallelisation par provider). Si absent : tous les 4 providers.
   only_provider?: AIProvider;
+  // Override du nombre de passes (multi-pass). Si fourni, applique a
+  // toutes les queries quelle que soit la categorie. Sinon : on suit
+  // PASSES_PER_CATEGORY. Use case : manual queries (1 query a la fois,
+  // cout doit rester minime) — on force passes=1.
+  passes_override?: number;
 }
 
 // Limiteur de concurrence simple : execute des taches en parallele
@@ -105,16 +145,20 @@ function buildVisibilityPrompt(query: string, geo_target?: string | null): {
   };
 }
 
-// Execute UNE query sur UN provider et retourne la reponse + analyse.
+// Execute UNE query sur UN provider (UN pass) et retourne la reponse +
+// analyse. pass_index est purement informatif — chaque call est
+// independant cote LLM, c'est la stochasticite naturelle qui produit
+// les variations entre passes.
 async function trackOne(args: {
   query: VisibilityQuery;
   provider: AIProvider;
+  pass_index: number;
   brand_name: string;
   brand_aliases: string[];
   geo_target?: string | null;
   audit_id?: string | null;
 }): Promise<VisibilityResponse> {
-  const { query, provider } = args;
+  const { query, provider, pass_index } = args;
   const model = VISIBILITY_MODELS[provider];
   const promptArgs = buildVisibilityPrompt(query.text, args.geo_target);
 
@@ -194,6 +238,7 @@ async function trackOne(args: {
     error,
     analysis,
     total_cost_eur,
+    pass_index,
   };
 }
 
@@ -208,16 +253,34 @@ export async function trackVisibility(
   const providers: AIProvider[] = opts.only_provider
     ? [opts.only_provider]
     : ["openai", "anthropic", "perplexity", "gemini"];
-  const allTasks: Array<{ query: VisibilityQuery; provider: AIProvider }> = [];
+
+  // Multi-pass : pour chaque (query, provider), on cree N taches
+  // independantes selon PASSES_PER_CATEGORY[query.category]. Chaque
+  // pass est un appel LLM autonome — la variance vient de la
+  // stochasticite naturelle des LLM (sampling, temperature 0.7).
+  const allTasks: Array<{
+    query: VisibilityQuery;
+    provider: AIProvider;
+    pass_index: number;
+  }> = [];
   for (const q of queries) {
+    const passes =
+      typeof opts.passes_override === "number" && opts.passes_override > 0
+        ? opts.passes_override
+        : PASSES_PER_CATEGORY[q.category] ?? 1;
     for (const p of providers) {
-      allTasks.push({ query: q, provider: p });
+      for (let i = 1; i <= passes; i++) {
+        allTasks.push({ query: q, provider: p, pass_index: i });
+      }
     }
   }
 
   if (verbose) {
+    const passesSummary = Object.entries(PASSES_PER_CATEGORY)
+      .map(([k, v]) => `${k}=${v}`)
+      .join(", ");
     console.log(
-      `[visibility] ${queries.length} queries x ${providers.length} providers = ${allTasks.length} appels (concurrence ${concurrency})`
+      `[visibility] ${queries.length} queries x ${providers.length} providers x multi-pass (${passesSummary}) = ${allTasks.length} appels (concurrence ${concurrency})`
     );
   }
 
@@ -234,7 +297,7 @@ export async function trackVisibility(
         audit_id: opts.audit_id,
       });
       done += 1;
-      if (verbose && done % 10 === 0) {
+      if (verbose && done % 20 === 0) {
         const elapsed = ((Date.now() - startTime) / 1000).toFixed(0);
         console.log(`[visibility]   ${done}/${allTasks.length} (${elapsed}s)`);
       }

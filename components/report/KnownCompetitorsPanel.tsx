@@ -240,8 +240,9 @@ export function KnownCompetitorsPanel({
       </ul>
 
       <p className="text-center text-xs text-ankora-text-muted">
-        2 questions ciblées par concurrent x 4 IA = jusqu&apos;à 8
-        réponses analysées par concurrent.
+        2 questions ciblées par concurrent x 4 IA x multi-pass (3
+        exécutions par question pour stabiliser la mesure) = jusqu&apos;à
+        24 réponses analysées par concurrent.
       </p>
     </section>
   );

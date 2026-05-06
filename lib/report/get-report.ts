@@ -396,6 +396,7 @@ export async function getReport(auditId: string): Promise<ReportData | null> {
   let top_competitors: CompetitorRanking[] = [];
   let city_main_platforms_above_brand: CompetitorRanking[] = [];
   let your_mentions_count = 0;
+  let score_base_responses_count = 0;
   // Bloc "Toutes les questions testees" — vide si l'audit n'a pas de
   // queries source='generated' (cas tres rare, defensif).
   let all_queries: AllQueryRow[] = [];
@@ -461,7 +462,39 @@ export async function getReport(auditId: string): Promise<ReportData | null> {
     total_responses = analyses.length;
     brand_mentions_count = analyses.filter((a) => a.brand_mentioned).length;
 
-    // ----- Agregation top 3 concurrents -----
+    // ----- Base de calcul UNIFIEE (podium <-> score) -----
+    // Le score (audit_scores.global_score) est calcule par
+    // computeVisibilityScores en EXCLUANT les queries branded et, pour
+    // un business local, EN GARDANT UNIQUEMENT les queries qui
+    // mentionnent city_main / city / region. On reconstruit ici la meme
+    // base pour que le podium TopCompetitors et le compteur
+    // your_mentions_count soient sur le meme denominateur que le score.
+    //
+    // Avant ce fix : podium calcule sur les 120 reponses (incluant
+    // branded ou la marque a forcement +40 mentions) et concurrents sur
+    // les non-branded uniquement -> incoherence "score 13 mais Top 1".
+    const isLocal = business?.business_scope === "local";
+    const localKeys = isLocal
+      ? [business?.city_main, business?.city, business?.region]
+          .map((s) => (typeof s === "string" ? s.trim().toLowerCase() : ""))
+          .filter((s) => s.length > 0)
+      : [];
+
+    const scoreAnalyses = analyses.filter((a) => {
+      const resp = responsesById.get(a.response_id);
+      if (!resp) return false;
+      const q = queriesById.get(resp.query_id);
+      if (!q) return false;
+      if (q.category === "branded") return false;
+      if (localKeys.length > 0) {
+        const text = q.text.toLowerCase();
+        if (!localKeys.some((k) => text.includes(k))) return false;
+      }
+      return true;
+    });
+    score_base_responses_count = scoreAnalyses.length;
+
+    // ----- Agregation top 3 concurrents (sur scoreAnalyses) -----
     // On compte chaque competitor cite, en groupant par cle normalisee
     // (Stripe / stripe / stripe.com -> meme cle "stripe"). On garde la
     // premiere graphie rencontree comme nom canonique.
@@ -469,7 +502,7 @@ export async function getReport(auditId: string): Promise<ReportData | null> {
       string,
       { displayName: string; count: number }
     >();
-    for (const a of analyses) {
+    for (const a of scoreAnalyses) {
       const cited = a.competitors_cited ?? [];
       for (const raw of cited) {
         if (!raw || typeof raw !== "string") continue;
@@ -483,26 +516,26 @@ export async function getReport(auditId: string): Promise<ReportData | null> {
         }
       }
     }
+    const denomScoreBase = score_base_responses_count || 1;
     top_competitors = [...competitorAgg.values()]
       .sort((a, b) => b.count - a.count)
       .slice(0, 3)
       .map((c) => ({
         name: c.displayName,
         mentions: c.count,
-        pct_of_queries:
-          total_queries > 0
-            ? Math.round((c.count / (total_queries * 4)) * 100)
-            : 0,
+        pct_of_queries: Math.round((c.count / denomScoreBase) * 100),
       }));
 
-    // ----- Mentions de la marque (par REPONSE, base unifiee /120) -----
-    // Avant la refonte localisation, on comptait par query unique
-    // (Set<query_id>, max 30) — ce qui creait une asymetrie visuelle
-    // sur le podium TopCompetitors (concurrent 18/120 vs Vous 10/30).
-    // On unifie maintenant sur la meme base que les concurrents : nombre
-    // de reponses (sur les 120 = 30 queries x 4 IA) ou la marque est
-    // citee. Identique a brand_mentions_count.
-    your_mentions_count = brand_mentions_count;
+    // ----- Mentions de la marque (sur la MEME base que le score) -----
+    // your_mentions_count est compte sur scoreAnalyses (non-branded +
+    // local-filtre si scope=local) — coherent avec top_competitors.
+    // C'est la metrique correcte pour le podium : si la marque rate
+    // sur questions service+local, elle apparaitra basse comme attendu
+    // au lieu d'etre artificiellement gonflee par les +40 mentions
+    // branded "qui parle d'elle".
+    your_mentions_count = scoreAnalyses.filter(
+      (a) => a.brand_mentioned
+    ).length;
 
     // ----- Plateformes qui depassent la marque sur city_main -----
     // Probleme observe : Harmonie Yacht peut etre 1er du podium TOTAL
@@ -991,6 +1024,7 @@ export async function getReport(auditId: string): Promise<ReportData | null> {
     total_queries,
     total_responses,
     brand_mentions_count,
+    score_base_responses_count,
     top_competitors,
     city_main_platforms_above_brand,
     your_mentions_count,

@@ -165,6 +165,15 @@ export type ReportData = {
   total_queries: number;
   total_responses: number;
   brand_mentions_count: number;
+  // Nombre de reponses qui composent la base de calcul du score
+  // (= scoreAnalyses) : non-branded + (si scope=local) matchant
+  // city_main/city/region. Utilise comme denominateur dans le podium
+  // TopCompetitors pour assurer la coherence avec le score affiche.
+  // Avant cette refonte, le podium utilisait total_queries * 4 (= 120)
+  // ce qui creait une asymetrie : un concurrent 18/120 (sur questions
+  // non-pertinentes pour le score) masquait que la marque etait
+  // 4/N sur la VRAIE base (questions service+comparative locales).
+  score_base_responses_count: number;
 
   // -- Phase D.2 : top 3 concurrents + apercus IA --
   top_competitors: CompetitorRanking[]; // 0..3 entrees

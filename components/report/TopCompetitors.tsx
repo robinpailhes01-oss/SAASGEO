@@ -29,8 +29,16 @@ import { cn } from "@/lib/utils";
 type TopCompetitorsProps = {
   competitors: CompetitorRanking[]; // 0..3 entrees
   brandName: string;
-  yourMentions: number; // mentions sur 120 (= totalQueries * 4)
-  totalQueries: number;
+  // Mentions de la marque sur la MEME base que le score (non-branded
+  // + filtre local si scope=local). Permet une comparaison juste avec
+  // les concurrents calcules sur la meme base.
+  yourMentions: number;
+  // Nombre total de reponses qui composent la base de calcul du score
+  // (= denominateur affiche). Avant le fix d'alignement podium <->
+  // score, on utilisait totalQueries * 4 (= 120) ce qui creait une
+  // contradiction visuelle avec le score (questions branded gonflaient
+  // les mentions de la marque).
+  scoreBaseResponsesCount: number;
   // Score global (0-100) — sert a nuancer le sous-titre quand la
   // marque est rank 1 sur le podium local mais avec un score faible
   // (ex: dominee localement mais invisible sur les plateformes a fort
@@ -39,6 +47,7 @@ type TopCompetitorsProps = {
   globalScore: number;
   // Localisation pour sous-titre contextualise
   cityMain?: string | null;
+  businessScope?: "local" | "national" | "international";
   // Plateformes/concurrents qui depassent la marque sur city_main —
   // affichees en bandeau secondaire pour expliquer pourquoi le Hero
   // dit "X clients ne vous trouvent pas" alors que VOUS etes 1er
@@ -140,9 +149,10 @@ export function TopCompetitors({
   competitors,
   brandName,
   yourMentions,
-  totalQueries,
+  scoreBaseResponsesCount,
   globalScore,
   cityMain,
+  businessScope,
   cityMainPlatformsAboveBrand = [],
 }: TopCompetitorsProps) {
   const reduce = useReducedMotion();
@@ -156,8 +166,9 @@ export function TopCompetitors({
     yourMentions,
     competitors
   );
-  const denominator = totalQueries * 4;
+  const denominator = Math.max(1, scoreBaseResponsesCount);
   const brandTone = brandRowTone(brandRank);
+  const isLocal = businessScope === "local";
 
   return (
     <section
@@ -272,6 +283,26 @@ export function TopCompetitors({
           );
         })}
       </ul>
+
+      {/* Note de transparence : sur quelle base est calcule ce
+          classement. Indispensable pour eviter "score 13/100 mais Top 1"
+          — le client comprend que les 2 chiffres sont calcules sur la
+          MEME base (questions service + comparatives, locales si
+          business_scope=local). */}
+      <p className="text-center text-xs text-ankora-text-muted">
+        Classement calculé sur{" "}
+        <span className="font-semibold text-ankora-text">
+          {scoreBaseResponsesCount} réponses IA
+        </span>{" "}
+        — questions service et comparatives
+        {isLocal && cityMain ? (
+          <>
+            {" "}autour de{" "}
+            <span className="font-semibold text-ankora-text">{cityMain}</span>
+          </>
+        ) : null}
+        . Même base que le score affiché en haut.
+      </p>
 
       {/* Sous-titre dynamique selon rank du brand + score global.
           On distingue 3 cas pour rank 0 (leader local) car la lecture

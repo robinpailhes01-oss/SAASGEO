@@ -269,7 +269,28 @@ export interface VisibilityScores {
 }
 
 export function computeVisibilityScores(
-  responses: VisibilityResponse[]
+  responses: VisibilityResponse[],
+  options?: {
+    // Si fourni, le score est calcule UNIQUEMENT sur les responses
+    // dont la query mentionne au moins un de ces keywords (case-
+    // insensitive). Sert pour les business `scope=local` ou on veut
+    // mesurer la visibilite SUR LE MARCHE LOCAL plutot que national.
+    //
+    // Cas Harmonie Yacht (Carnon/Montpellier/Hérault) : les 3-4
+    // questions nationales ("top 5 charters France") sortaient
+    // ChatGPT/Claude/Gemini a 0/100 — ces queries plombaient la note.
+    // En filtrant local, on mesure ce qui compte vraiment pour le
+    // commerce.
+    //
+    // Les questions hors local restent dans le rapport (visibles dans
+    // AllQueriesPanel section "national") mais n'impactent plus le
+    // score officiel.
+    //
+    // top_competitors reste calcule sur TOUTES les responses (pour la
+    // coherence du podium qui doit montrer les vrais concurrents
+    // nationaux qui prennent la place de la marque).
+    localScopeKeywords?: string[];
+  }
 ): VisibilityScores {
   const providers: AIProvider[] = ["openai", "anthropic", "perplexity", "gemini"];
   const per_provider: Record<AIProvider, number> = {
@@ -294,13 +315,26 @@ export function computeVisibilityScores(
   // le score 0-100 ni dans mention_rate / citation_rate / per_provider.
   //
   // Cf. brief change "Exclure les questions branded du score principal".
-  const scoreResponses = responses.filter(
+  let scoreResponses = responses.filter(
     (r) => r.query_category !== "branded"
   );
 
+  // FILTRE GEO LOCAL (optionnel) : si options.localScopeKeywords est
+  // fourni et non vide, garde uniquement les queries qui mentionnent
+  // au moins un des keywords (case-insensitive). Cf. JSDoc options
+  // ci-dessus.
+  const localKeys = (options?.localScopeKeywords ?? [])
+    .map((k) => k.trim().toLowerCase())
+    .filter((k) => k.length > 0);
+  if (localKeys.length > 0) {
+    scoreResponses = scoreResponses.filter((r) => {
+      const text = (r.query_text ?? "").toLowerCase();
+      return localKeys.some((k) => text.includes(k));
+    });
+  }
+
   // Pour chaque provider : on calcule un sub-score sur les responses
-  // FILTREES (non-branded). Si on ne fournit aucune reponse non-branded,
-  // per_provider reste a 0 (cas tres rare en prod, defensif).
+  // FILTREES (non-branded, eventuellement non-national).
   // Formule : pour chaque query, points = 0/25/50/75/100 selon :
   //   - 100 : mentionne EN PREMIER + sentiment positif
   //   -  75 : mentionne en top 3 + sentiment positif/neutre

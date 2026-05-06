@@ -154,13 +154,27 @@ export const runAuditFunction = inngest.createFunction(
       );
 
       // Aggregation + persistance + scoring (1 seul step a la fin)
+      // Si business `scope=local`, on calcule le score UNIQUEMENT sur
+      // les queries qui mentionnent city_main / city / region — c'est
+      // la performance qui compte pour un commerce local. Les queries
+      // nationales restent dans le rapport (AllQueriesPanel) mais ne
+      // pesent plus dans le score qui sortait sinon a ~10/100 a cause
+      // de queries ou la marque locale n'a aucune chance contre les
+      // leaders nationaux.
       const allResponses = responsesPerProvider.flat();
+      const localScopeKeywords =
+        business.business_scope === "local"
+          ? [business.city_main, business.city, business.region]
+              .map((s) => (typeof s === "string" ? s.trim() : ""))
+              .filter((s) => s.length > 0)
+          : undefined;
       const visibilityScores = await step.run("aggregate-visibility", () =>
         stepAggregateVisibility({
           audit_id,
           responses: allResponses,
           query_id_map: queryIdMap,
           persist: true,
+          localScopeKeywords,
         })
       );
 

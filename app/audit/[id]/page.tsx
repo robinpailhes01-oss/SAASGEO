@@ -16,7 +16,9 @@
 //   D.1 : ScoreHero, Verdict, LostOpportunities  (en place)
 //   D.2 : TopCompetitors, AIResponsePreview      (a venir)
 //   D.3 : WhyInvisible, PriorityActions, Urgency (a venir)
-//   D.4 : MainCta, ChallengeCompetitor, EmailCapture (a venir)
+//   D.4 : MainCta, EmailCapture (ChallengeCompetitor retire — pas
+//         d'incitation a auditer un autre site dans le rapport,
+//         focus 100% sur la conversion CTA Calendly)
 // =====================================================================
 
 import type { Metadata } from "next";
@@ -36,7 +38,6 @@ import { WhyInvisible } from "@/components/report/WhyInvisible";
 import { PriorityActions } from "@/components/report/PriorityActions";
 import { UrgencyReminder } from "@/components/report/UrgencyReminder";
 import { MainCta } from "@/components/report/MainCta";
-import { ChallengeCompetitor } from "@/components/report/ChallengeCompetitor";
 import { EmailCapture } from "@/components/report/EmailCapture";
 import { PoweredByAnkora } from "@/components/report/PoweredByAnkora";
 import { ManualQueries } from "@/components/report/ManualQueries";
@@ -157,6 +158,8 @@ export default async function AuditReportPage({
         globalScore={report.global_score}
         perProvider={report.per_provider}
         mentionRate={report.mention_rate}
+        businessScope={report.business_scope}
+        cityMain={report.city_main}
       />
 
       {/* Bloc 2 — Verdict en 1 phrase */}
@@ -251,11 +254,6 @@ export default async function AuditReportPage({
         globalScore={report.global_score}
         brandName={report.brand_name}
         hostname={report.hostname}
-      />
-
-      {/* Bloc 10 — Défi concurrent (viralité légère) */}
-      <ChallengeCompetitor
-        topCompetitorName={report.top_competitors[0]?.name ?? null}
       />
 
       {/* Bloc 11 — Capture email inline */}

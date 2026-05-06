@@ -436,13 +436,21 @@ export async function stepTrackVisibilityForProvider(args: {
 
 // Aggregation des reponses des 4 providers + persist + compute scores.
 // Appelee apres step.parallel des 4 providers.
+//
+// `localScopeKeywords` (optionnel) : si fourni, le score est calcule
+// UNIQUEMENT sur les queries mentionnant un de ces keywords. Sert pour
+// les business `scope=local` ou les questions nationales sortent les
+// IA a 0/100 et plombent la note. Cf. visibility-tracker.ts.
 export async function stepAggregateVisibility(args: {
   audit_id: string;
   responses: VisibilityResponse[];
   query_id_map: QueryIdMap;
   persist: boolean;
+  localScopeKeywords?: string[];
 }): Promise<VisibilityScores> {
-  const scores = computeVisibilityScores(args.responses);
+  const scores = computeVisibilityScores(args.responses, {
+    localScopeKeywords: args.localScopeKeywords,
+  });
 
   if (args.persist) {
     await persistAiResponses({

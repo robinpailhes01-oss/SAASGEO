@@ -35,6 +35,11 @@ type ScoreHeroProps = {
   // Optionnel : taux de mention reel (0-100). Si fourni, on l'utilise
   // pour calculer "X clients sur 100" (plus precis que global_score).
   mentionRate?: number | null;
+  // Pour adapter la note explicative sous le score : business local
+  // -> calcule sur les questions geo-locales ; sinon -> calcule sur
+  // les 20 service+comparatives.
+  businessScope?: "local" | "national" | "international";
+  cityMain?: string | null;
 };
 
 const toneClass: Record<ScoreTone, string> = {
@@ -53,8 +58,11 @@ export function ScoreHero({
   globalScore,
   perProvider,
   mentionRate,
+  businessScope,
+  cityMain,
 }: ScoreHeroProps) {
   const tone = scoreTone(globalScore);
+  const isLocal = businessScope === "local";
 
   // Pourcentage "ne vous trouvent pas" : prefere mention_rate si dispo,
   // sinon retombe sur 100 - global_score. Clamp 0-100 par securite.
@@ -133,15 +141,27 @@ export function ScoreHero({
         </span>
       </div>
 
-      {/* Note explicative : le score est calcule SANS les questions
-          branded (ou le nom de la marque est dans la question — un client
-          qui cherche par votre nom vous trouve, c'est attendu, ca ne
-          mesure pas la vraie visibilite commerciale). */}
+      {/* Note explicative : le perimetre de calcul du score depend du
+          business_scope. Pour un business LOCAL, on calcule uniquement
+          sur les questions geo-locales (autour de city_main) car les
+          questions nationales feraient sortir les IA a 0/100 et
+          plomberaient la note injustement. Pour un business national,
+          on garde les 20 service+comparatives. Toujours sans branded. */}
       <p className="mt-3 max-w-xl mx-auto text-xs text-ankora-text-muted leading-snug">
-        Calculé sur 20 questions service et comparatives — les requêtes
-        où vos clients ne connaissent pas encore votre nom. Les
-        10 questions de notoriété sont visibles dans le détail mais
-        n&apos;impactent pas le score.
+        {isLocal ? (
+          <>
+            Calculé sur les questions locales{cityMain ? <> autour de <strong className="text-ankora-text font-semibold">{cityMain}</strong></> : null} — c&apos;est là que vos prospects vous cherchent. Les questions
+            nationales et de notoriété sont visibles dans le détail
+            mais n&apos;impactent pas le score.
+          </>
+        ) : (
+          <>
+            Calculé sur les 20 questions service et comparatives — les
+            requêtes où vos clients ne connaissent pas encore votre
+            nom. Les 10 questions de notoriété sont visibles dans le
+            détail mais n&apos;impactent pas le score.
+          </>
+        )}
       </p>
 
       {/* Mini-scores par IA — inchanges, gardent leur role d'ancrage serieux */}

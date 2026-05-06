@@ -48,6 +48,7 @@ export async function createAudit(args: {
   url: string;
   geo_target?: string | null;
   keywords?: string[];
+  competitors?: string[];
 }): Promise<string> {
   const sb = createAdminClient();
   const url_normalized = (() => {
@@ -65,6 +66,8 @@ export async function createAudit(args: {
     url_normalized,
     geo_target: args.geo_target ?? null,
     keywords: args.keywords && args.keywords.length > 0 ? args.keywords : [],
+    competitors:
+      args.competitors && args.competitors.length > 0 ? args.competitors : [],
     status: "queued",
     progress: 0,
     current_step: "Initialisation",

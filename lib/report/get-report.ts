@@ -24,6 +24,7 @@ import {
   type AIProvider,
   type AIResponseSample,
   type CompetitorRanking,
+  type KnownCompetitorMatchup,
   type PriorityAction,
   type ProviderScore,
   type AllQueryRow,
@@ -301,7 +302,7 @@ export async function getReport(auditId: string): Promise<ReportData | null> {
   ] = await Promise.all([
     sb
       .from("audits")
-      .select("id, url, url_normalized, status, completed_at")
+      .select("id, url, url_normalized, status, completed_at, competitors")
       .eq("id", auditId)
       .maybeSingle(),
     sb
@@ -397,6 +398,7 @@ export async function getReport(auditId: string): Promise<ReportData | null> {
   let city_main_platforms_above_brand: CompetitorRanking[] = [];
   let your_mentions_count = 0;
   let score_base_responses_count = 0;
+  let known_competitors: ReportData["known_competitors"] = [];
   // Bloc "Toutes les questions testees" — vide si l'audit n'a pas de
   // queries source='generated' (cas tres rare, defensif).
   let all_queries: AllQueryRow[] = [];
@@ -615,6 +617,66 @@ export async function getReport(auditId: string): Promise<ReportData | null> {
             ),
           }));
       }
+    }
+
+    // ----- Matchup vs concurrents connus (saisis au formulaire) -----
+    // Pour chaque concurrent saisi par le client (audits.competitors),
+    // on identifie les 2 queries deterministes injectees par le pipeline
+    // (cf. lib/ai/pipeline-steps.ts buildKnownCompetitorQueries) en
+    // matchant sur le texte de la query (qui contient le nom du
+    // concurrent). On compte ensuite sur les ~8 reponses associees :
+    //   - combien citent le concurrent : signal "l'IA le connait"
+    //   - combien citent la marque : signal "l'IA m'a positionne face a lui"
+    const auditCompetitors: string[] = Array.isArray(audit.competitors)
+      ? audit.competitors
+      : [];
+    if (auditCompetitors.length > 0) {
+      known_competitors = auditCompetitors.map((rawName) => {
+        const cName = rawName.trim();
+        const cKey = normalizeCompetitorKey(cName);
+        const cLower = cName.toLowerCase();
+
+        // Queries dont le texte contient le nom du concurrent
+        // (cas-insensible). Les 2 queries deterministes injectees sont
+        // les seules a contenir le nom du concurrent — pas de risque
+        // de confusion avec les 30 queries LLM.
+        const targetQueryIds = new Set(
+          Array.from(queriesById.values())
+            .filter((q) => q.text.toLowerCase().includes(cLower))
+            .map((q) => q.id)
+        );
+        const targetAnalyses = analyses.filter((a) => {
+          const resp = responsesById.get(a.response_id);
+          return resp && targetQueryIds.has(resp.query_id);
+        });
+
+        const total_responses = targetAnalyses.length;
+        // L'IA a-t-elle "connu" {C} ? On regarde si elle l'a cite dans
+        // sa reponse (= competitors_cited normalise contient cKey).
+        const competitor_mentions = targetAnalyses.filter((a) =>
+          (a.competitors_cited ?? []).some(
+            (c) => typeof c === "string" && normalizeCompetitorKey(c) === cKey
+          )
+        ).length;
+        const brand_mentions = targetAnalyses.filter(
+          (a) => a.brand_mentioned
+        ).length;
+
+        const outcome: KnownCompetitorMatchup["outcome"] = (() => {
+          if (competitor_mentions === 0) return "ai_unknown";
+          if (brand_mentions > competitor_mentions) return "brand_wins";
+          if (competitor_mentions > brand_mentions) return "competitor_wins";
+          return "tie";
+        })();
+
+        return {
+          name: cName,
+          total_responses,
+          competitor_mentions,
+          brand_mentions,
+          outcome,
+        };
+      });
     }
 
     // ----- Selection des apercus IA (Phase D.2 - bloc 5) -----
@@ -1028,6 +1090,7 @@ export async function getReport(auditId: string): Promise<ReportData | null> {
     top_competitors,
     city_main_platforms_above_brand,
     your_mentions_count,
+    known_competitors,
     samples,
     why_reasons,
     recommendations,

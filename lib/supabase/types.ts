@@ -356,6 +356,7 @@ export type Database = {
       }
       audits: {
         Row: {
+          competitors: string[]
           completed_at: string | null
           created_at: string
           current_step: string | null
@@ -373,6 +374,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          competitors?: string[]
           completed_at?: string | null
           created_at?: string
           current_step?: string | null
@@ -390,6 +392,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          competitors?: string[]
           completed_at?: string | null
           created_at?: string
           current_step?: string | null

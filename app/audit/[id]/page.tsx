@@ -31,6 +31,7 @@ import { ScoreHero } from "@/components/report/ScoreHero";
 import { Verdict } from "@/components/report/Verdict";
 import { LostOpportunities } from "@/components/report/LostOpportunities";
 import { TopCompetitors } from "@/components/report/TopCompetitors";
+import { KnownCompetitorsPanel } from "@/components/report/KnownCompetitorsPanel";
 import { AIResponsePreview } from "@/components/report/AIResponsePreview";
 import { AllQueriesPanel } from "@/components/report/AllQueriesPanel";
 import { LocationWarning } from "@/components/report/LocationWarning";
@@ -192,6 +193,17 @@ export default async function AuditReportPage({
         cityMain={report.city_main}
         businessScope={report.business_scope}
         cityMainPlatformsAboveBrand={report.city_main_platforms_above_brand}
+      />
+
+      {/* Bloc 4.5 — Concurrents connus (uniquement si l'utilisateur en
+          a saisi au formulaire). Matchup ciblé : pour chaque concurrent
+          indiqué, on a posé aux 4 IA "Que pensez-vous de {C}" et
+          "Alternatives à {C}", puis on mesure si la marque ressort
+          dans ces réponses. C'est ce qui transforme l'audit générique
+          en audit terrain. */}
+      <KnownCompetitorsPanel
+        matchups={report.known_competitors}
+        brandName={report.brand_name}
       />
 
       {/* Bloc 5 — Aperçu en direct d'une réponse IA (le wow ultime) */}

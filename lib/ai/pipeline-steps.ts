@@ -264,6 +264,75 @@ export async function stepExtractBusiness(args: {
 // =====================================================================
 // Step 3 : Generation 30 queries (LLM Sonnet)
 // =====================================================================
+// Construit les queries comparatives deterministes pour les concurrents
+// connus saisis par le client (audits.competitors). Chaque concurrent
+// declenche 2 queries non-branded (= comptees dans le score) :
+//
+//   1. "Alternatives a {C} pour {industry} a {city_main}"
+//      -> teste si l'IA cite la marque comme alternative naturelle
+//
+//   2. "Que pensez-vous de {C} pour {industry} a {city_main} ?"
+//      -> teste si l'IA connait meme {C} (souvent non pour les acteurs
+//         locaux) ; si oui, peut-elle nous citer en comparaison ?
+//
+// Pourquoi DETERMINISTE plutot que via le LLM : on ne peut pas faire
+// confiance au LLM pour orthographier exactement les noms de
+// concurrents (eg "Click&Boat" -> "Click and Boat" ou "ClickBoat"),
+// or notre matcher de competitors compte sur la graphie exacte. Et
+// on veut une garantie 100% que toutes les queries demandees sont
+// generees — pas un best-effort LLM.
+function buildKnownCompetitorQueries(
+  competitors: string[],
+  business: BusinessInfo,
+  startPosition: number
+): VisibilityQuery[] {
+  if (competitors.length === 0) return [];
+  const isLocal = business.business_scope === "local";
+  const lang = business.language === "en" ? "en" : "fr";
+  const industry = (business.industry ?? "").trim();
+
+  // Anchor geo : city_main pour local, sinon pas de geo (= national).
+  const geoLabel = isLocal
+    ? (business.city_main || business.city || business.region || "").trim()
+    : "";
+  const inGeo = (() => {
+    if (!geoLabel) return "";
+    return lang === "en" ? ` in ${geoLabel}` : ` à ${geoLabel}`;
+  })();
+  const forIndustry = (() => {
+    if (!industry) return "";
+    return lang === "en" ? ` for ${industry}` : ` pour ${industry}`;
+  })();
+
+  const queries: VisibilityQuery[] = [];
+  let pos = startPosition;
+  for (const raw of competitors) {
+    const c = raw.trim();
+    if (!c) continue;
+    const q1 =
+      lang === "en"
+        ? `Alternatives to ${c}${forIndustry}${inGeo}`
+        : `Alternatives à ${c}${forIndustry}${inGeo}`;
+    const q2 =
+      lang === "en"
+        ? `What do you think of ${c}${forIndustry}${inGeo}?`
+        : `Que pensez-vous de ${c}${forIndustry}${inGeo} ?`;
+    queries.push({
+      id: randomUUID(),
+      text: q1,
+      category: "comparative",
+      position: pos++,
+    });
+    queries.push({
+      id: randomUUID(),
+      text: q2,
+      category: "comparative",
+      position: pos++,
+    });
+  }
+  return queries;
+}
+
 export async function stepGenerateQueries(args: {
   audit_id: string;
   business: BusinessInfo;
@@ -273,6 +342,11 @@ export async function stepGenerateQueries(args: {
   // ("Activite romantique en mer Montpellier" plutot que "Meilleur
   // charter Montpellier"). Aucun effet si vide.
   keywords?: string[];
+  // Concurrents connus (audits.competitors). Si fourni, on appendra
+  // 2 queries comparatives ciblees PAR concurrent au pipeline (max
+  // 5 concurrents -> 10 queries supplementaires, total 30+10=40).
+  // Cf. buildKnownCompetitorQueries.
+  competitors?: string[];
 }): Promise<{ queries: VisibilityQuery[]; query_id_map: QueryIdMap }> {
   if (args.persist) {
     await updateAuditStatus({
@@ -338,6 +412,21 @@ export async function stepGenerateQueries(args: {
   }
   for (const text of parsed.comparative) {
     queries.push({ id: randomUUID(), text, category: "comparative", position: pos++ });
+  }
+
+  // Append deterministe : queries ciblees pour les concurrents connus
+  // (max 5 concurrents -> +10 queries comparatives non-branded). Ces
+  // queries comptent dans le score (non-branded + locales si scope=local
+  // et city_main present), et permettent de mesurer si les IA
+  // connaissent les acteurs locaux que le client a indiques.
+  if (args.competitors && args.competitors.length > 0) {
+    const competitorQueries = buildKnownCompetitorQueries(
+      args.competitors,
+      args.business,
+      pos
+    );
+    queries.push(...competitorQueries);
+    pos += competitorQueries.length;
   }
 
   let query_id_map: QueryIdMap = {};

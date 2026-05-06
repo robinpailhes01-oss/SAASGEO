@@ -198,6 +198,11 @@ export type ReportData = {
   why_reasons: WhyReason[]; // exactement 3 (technique + notoriete + contenu)
   recommendations: RecommendationsSummary;
 
+  // -- Bloc concurrents connus : matchup vs ceux saisis par le client --
+  // Vide si l'utilisateur n'a pas saisi de concurrents au formulaire.
+  // Sinon une entree par concurrent saisi (max 5).
+  known_competitors: KnownCompetitorMatchup[];
+
   // -- Bloc Evolution : presence par categorie + delta vs precedent --
   evolution: EvolutionPayload;
 
@@ -265,6 +270,35 @@ export type CompetitorRanking = {
   name: string; // nom canonique pour l'affichage (ex: "Stripe")
   mentions: number; // nombre total d'analyses qui le citent
   pct_of_queries: number; // % sur le total de queries (0-100)
+};
+
+// =====================================================================
+// Phase concurrents-connus — matchup vs concurrents saisis par le client
+// =====================================================================
+
+// Matchup contre UN concurrent connu (saisi via audits.competitors).
+// Calcule sur les 8 reponses IA des 2 queries deterministes injectees
+// pour ce concurrent (cf. lib/ai/pipeline-steps.ts buildKnownCompetitorQueries).
+export type KnownCompetitorMatchup = {
+  // Nom tel que saisi par le client (graphie d'affichage).
+  name: string;
+  // Nombre total de reponses IA testees pour ce concurrent (= 8 si
+  // les 2 queries x 4 IA ont toutes repondu, parfois moins si une IA
+  // a echoue).
+  total_responses: number;
+  // Combien de reponses citent {C} (= "l'IA le connait" : si bas,
+  // c'est qu'aucune IA ne le connait, signal fort de marche obscur).
+  competitor_mentions: number;
+  // Combien de reponses citent la marque dans les 2 queries qui
+  // parlent EXPLICITEMENT de {C}. C'est notre vrai resultat de
+  // matchup : "les IA ont parle de moi face a {C} ?"
+  brand_mentions: number;
+  // Verdict synthetique pour l'UI :
+  //  - "ai_unknown"   : les IA ne connaissent pas {C} (competitor_mentions == 0)
+  //  - "brand_wins"   : la marque est citee plus souvent que {C} (rare et bon)
+  //  - "competitor_wins" : {C} est cite plus souvent que la marque
+  //  - "tie"          : aucun cite ou egalite stricte
+  outcome: "ai_unknown" | "brand_wins" | "competitor_wins" | "tie";
 };
 
 // Un apercu de reponse IA pour le bloc 5

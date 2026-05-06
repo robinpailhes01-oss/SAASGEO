@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Sparkles, Loader2, ShieldCheck, Zap, Heart, MapPin, Tag } from "lucide-react";
+import { Sparkles, Loader2, ShieldCheck, Zap, Heart, MapPin, Tag, Swords } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -58,6 +58,7 @@ export function HeroAuditForm({ className }: { className?: string }) {
   const [value, setValue] = React.useState("");
   const [city, setCity] = React.useState("");
   const [keywords, setKeywords] = React.useState("");
+  const [competitors, setCompetitors] = React.useState("");
   const [touched, setTouched] = React.useState(false);
   const [submitting, setSubmitting] = React.useState(false);
 
@@ -97,10 +98,21 @@ export function HeroAuditForm({ className }: { className?: string }) {
         .filter((k) => k.length > 0 && k.length <= 60);
       const dedupKeywords = Array.from(new Set(parsedKeywords)).slice(0, 10);
 
+      // Concurrents connus : split sur virgule / nouvelle ligne, dedup,
+      // trim, garde les non-vides. Limite a 5 cote client (echo cote
+      // API). Chaque concurrent declenche 2 queries comparatives
+      // ciblees dans le pipeline (~+0.06 EUR / concurrent).
+      const parsedCompetitors = competitors
+        .split(/[,\n]+/)
+        .map((c) => c.trim())
+        .filter((c) => c.length > 0 && c.length <= 80);
+      const dedupCompetitors = Array.from(new Set(parsedCompetitors)).slice(0, 5);
+
       const body: {
         url: string;
         geo_target?: string;
         keywords?: string[];
+        competitors?: string[];
       } = {
         url: validation.url,
       };
@@ -109,6 +121,9 @@ export function HeroAuditForm({ className }: { className?: string }) {
       }
       if (dedupKeywords.length > 0) {
         body.keywords = dedupKeywords;
+      }
+      if (dedupCompetitors.length > 0) {
+        body.competitors = dedupCompetitors;
       }
 
       const res = await fetch("/api/audits", {
@@ -240,6 +255,41 @@ export function HeroAuditForm({ className }: { className?: string }) {
         >
           Séparez par des virgules. Oriente les questions testées vers
           ce que cherchent vraiment vos clients.
+        </p>
+      </div>
+
+      {/* Concurrents connus : permet au client de tester explicitement
+          des concurrents qu'il connait (ex: voisins de port, petites
+          agences locales). Chaque concurrent declenche 2 queries
+          comparatives ciblees - revele si les IA les connaissent ET
+          comment elles positionnent la marque face a eux. C'est ce
+          qui transforme l'audit "generique" en audit terrain. */}
+      <div className="mt-3">
+        <div className="relative">
+          <Swords
+            className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-ankora-text-muted"
+            aria-hidden="true"
+          />
+          <Input
+            type="text"
+            name="competitors"
+            placeholder="Concurrents connus (ex: SamBoat, Click&Boat, Voilea)"
+            value={competitors}
+            onChange={(e) => setCompetitors(e.target.value)}
+            disabled={submitting}
+            maxLength={400}
+            autoComplete="off"
+            className="h-12 pl-9 text-sm sm:rounded-xl"
+            aria-describedby="audit-competitors-help"
+          />
+        </div>
+        <p
+          id="audit-competitors-help"
+          className="mt-1.5 text-xs text-ankora-text-muted text-center sm:text-left"
+        >
+          Séparez par des virgules (max 5). Teste explicitement si les
+          IA connaissent vos vrais concurrents et comment elles vous
+          positionnent face à eux.
         </p>
       </div>
 

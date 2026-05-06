@@ -61,11 +61,12 @@ export async function POST(req: NextRequest) {
     return err(400, "invalid_body", "Corps de requete JSON invalide.");
   }
 
-  const { url, geo_target, captcha_token, keywords } = (body ?? {}) as {
+  const { url, geo_target, captcha_token, keywords, competitors } = (body ?? {}) as {
     url?: unknown;
     geo_target?: unknown;
     captcha_token?: unknown;
     keywords?: unknown;
+    competitors?: unknown;
   };
 
   // 2. Validation URL stricte (anti-SSRF, ports, protocoles, TLD)
@@ -135,12 +136,33 @@ export async function POST(req: NextRequest) {
     return cleaned;
   })();
 
+  // Concurrents connus : tableau de strings 2-80 chars, max 5 entrees,
+  // dedup. Chaque concurrent declenche 2 queries comparatives ciblees
+  // dans le pipeline (cf. lib/ai/pipeline-steps.ts buildCompetitorQueries).
+  const normalizedCompetitors: string[] = (() => {
+    if (!Array.isArray(competitors)) return [];
+    const cleaned: string[] = [];
+    const seen = new Set<string>();
+    for (const c of competitors) {
+      if (typeof c !== "string") continue;
+      const t = c.trim();
+      if (t.length < 2 || t.length > 80) continue;
+      const key = t.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      cleaned.push(t);
+      if (cleaned.length >= 5) break;
+    }
+    return cleaned;
+  })();
+
   let audit_id: string;
   try {
     audit_id = await createAudit({
       url: urlCheck.url,
       geo_target: normalizedGeoTarget,
       keywords: normalizedKeywords,
+      competitors: normalizedCompetitors,
     });
   } catch (e) {
     return err(500, "server_error", "Impossible de créer l'audit.", {
@@ -157,6 +179,7 @@ export async function POST(req: NextRequest) {
         url: urlCheck.url,
         geo_target: normalizedGeoTarget,
         keywords: normalizedKeywords,
+        competitors: normalizedCompetitors,
       },
     });
   } catch (e) {

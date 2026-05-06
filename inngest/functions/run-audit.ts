@@ -56,6 +56,10 @@ interface AuditRequestedPayload {
   // Mots-cles client (audits.keywords) injectes dans queries-gen.
   // Optionnel — si vide, comportement original generique par secteur.
   keywords?: string[];
+  // Concurrents connus (audits.competitors) — chaque entree declenche
+  // 2 queries comparatives ciblees ("Alternatives a X a Y" + "Que
+  // pensez-vous de X a Y"). Optionnel — si vide, pipeline standard.
+  competitors?: string[];
 }
 
 // Type minimal pour le step de Inngest. On evite d'importer le type
@@ -76,7 +80,7 @@ export const runAuditFunction = inngest.createFunction(
     triggers: [{ event: "audit/requested" }],
   },
   async ({ event, step }: { event: { data: AuditRequestedPayload }; step: InngestStep }) => {
-    const { audit_id, url, geo_target, keywords } = event.data;
+    const { audit_id, url, geo_target, keywords, competitors } = event.data;
 
     try {
       // Budget check : wrap dans step.run() pour ne tourner qu'une fois
@@ -113,6 +117,8 @@ export const runAuditFunction = inngest.createFunction(
           business,
           persist: true,
           keywords: keywords && keywords.length > 0 ? keywords : undefined,
+          competitors:
+            competitors && competitors.length > 0 ? competitors : undefined,
         })
       );
 

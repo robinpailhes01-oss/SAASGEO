@@ -21,6 +21,11 @@ export interface AuditRequestedEvent {
     // Mots-cles client (max 10) injectes dans le prompt queries-gen
     // pour orienter les questions vers la vraie cible. Optionnel.
     keywords?: string[];
+    // Concurrents connus (max 5) saisis par le client. Le pipeline
+    // injecte 2 queries comparatives ciblees par concurrent pour
+    // mesurer comment les IA positionnent la marque face a eux.
+    // Optionnel.
+    competitors?: string[];
   };
 }
 

@@ -279,7 +279,28 @@ export function computeVisibilityScores(
     gemini: 0,
   };
 
-  // Pour chaque provider : on calcule un sub-score
+  // EXCLUSION des questions BRANDED pour le calcul du score principal.
+  //
+  // Justification : une question branded ("Avis sur Harmonie Yacht",
+  // "Harmonie Yacht tarifs") contient deja le nom de la marque dans
+  // le texte. Si l'IA cite la marque dans sa reponse, c'est attendu
+  // — ca ne mesure pas la VRAIE visibilite commerciale (apparaitre
+  // quand un client cherche un service SANS connaitre la marque).
+  //
+  // Ne sont gardees pour le score : les categories `service` et
+  // `comparative` (~20 questions sur 30). Les `branded` restent dans
+  // les responses brutes (donc dans top_competitors et l'affichage
+  // AllQueriesPanel sous label "Notoriete") mais ne pesent plus dans
+  // le score 0-100 ni dans mention_rate / citation_rate / per_provider.
+  //
+  // Cf. brief change "Exclure les questions branded du score principal".
+  const scoreResponses = responses.filter(
+    (r) => r.query_category !== "branded"
+  );
+
+  // Pour chaque provider : on calcule un sub-score sur les responses
+  // FILTREES (non-branded). Si on ne fournit aucune reponse non-branded,
+  // per_provider reste a 0 (cas tres rare en prod, defensif).
   // Formule : pour chaque query, points = 0/25/50/75/100 selon :
   //   - 100 : mentionne EN PREMIER + sentiment positif
   //   -  75 : mentionne en top 3 + sentiment positif/neutre
@@ -287,7 +308,9 @@ export function computeVisibilityScores(
   //   -  25 : mentionne mais sentiment negatif
   //   -   0 : non mentionne
   for (const provider of providers) {
-    const perProvider = responses.filter((r) => r.provider === provider);
+    const perProvider = scoreResponses.filter(
+      (r) => r.provider === provider
+    );
     if (perProvider.length === 0) continue;
     let sum = 0;
     for (const r of perProvider) {
@@ -321,16 +344,23 @@ export function computeVisibilityScores(
      per_provider.perplexity + per_provider.gemini) / 4
   );
 
-  // Mention rate = % de queries ou brand_mentioned=true
-  const totalAnalyzed = responses.filter((r) => r.analysis !== null).length;
-  const mentions = responses.filter((r) => r.analysis?.brand_mentioned).length;
-  const citations = responses.filter(
+  // Mention rate / citation rate calcules SUR LES MEMES responses
+  // filtrees que le score (coherence : tous les indicateurs derivent
+  // de la meme base "non-branded").
+  const totalAnalyzed = scoreResponses.filter((r) => r.analysis !== null).length;
+  const mentions = scoreResponses.filter((r) => r.analysis?.brand_mentioned).length;
+  const citations = scoreResponses.filter(
     (r) => r.analysis?.brand_citation_present
   ).length;
   const mention_rate = totalAnalyzed > 0 ? (mentions / totalAnalyzed) * 100 : 0;
   const citation_rate = totalAnalyzed > 0 ? (citations / totalAnalyzed) * 100 : 0;
 
-  // Top competitors
+  // Top competitors : on garde TOUTES les responses (y compris branded)
+  // pour cette agregation. Un concurrent cite dans une question branded
+  // ("Que vaut Harmonie Yacht ?") reste un signal interessant — c'est
+  // typiquement la qu'une IA propose des "alternatives a la marque",
+  // ce qui revele les vrais concurrents directs. Seul le score
+  // numerique exclut les branded (cf. justification plus haut).
   const compFreq = new Map<string, number>();
   for (const r of responses) {
     if (!r.analysis) continue;

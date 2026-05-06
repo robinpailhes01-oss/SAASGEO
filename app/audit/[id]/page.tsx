@@ -185,6 +185,7 @@ export default async function AuditReportPage({
         brandName={report.brand_name}
         yourMentions={report.your_mentions_count}
         totalQueries={report.total_queries}
+        globalScore={report.global_score}
         cityMain={report.city_main}
         cityMainPlatformsAboveBrand={report.city_main_platforms_above_brand}
       />

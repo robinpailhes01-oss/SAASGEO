@@ -56,8 +56,12 @@ type GeoSection = {
   hint: string | null;
 };
 
+// "branded" -> "Notoriete" : ces questions ne mesurent pas la VRAIE
+// visibilite commerciale (le client connait deja le nom de la marque
+// dans la question). Elles sont conservees pour transparence mais
+// SONT EXCLUES DU SCORE PRINCIPAL — cf. lib/ai/visibility-tracker.
 const CATEGORY_LABEL: Record<QueryCategory, string> = {
-  branded: "Marque",
+  branded: "Notoriété",
   service: "Sectoriel",
   comparative: "Comparatif",
 };

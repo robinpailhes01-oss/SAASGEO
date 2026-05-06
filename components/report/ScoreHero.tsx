@@ -133,6 +133,17 @@ export function ScoreHero({
         </span>
       </div>
 
+      {/* Note explicative : le score est calcule SANS les questions
+          branded (ou le nom de la marque est dans la question — un client
+          qui cherche par votre nom vous trouve, c'est attendu, ca ne
+          mesure pas la vraie visibilite commerciale). */}
+      <p className="mt-3 max-w-xl mx-auto text-xs text-ankora-text-muted leading-snug">
+        Calculé sur 20 questions service et comparatives — les requêtes
+        où vos clients ne connaissent pas encore votre nom. Les
+        10 questions de notoriété sont visibles dans le détail mais
+        n&apos;impactent pas le score.
+      </p>
+
       {/* Mini-scores par IA — inchanges, gardent leur role d'ancrage serieux */}
       <ul
         className="mt-10 grid grid-cols-2 sm:grid-cols-4 gap-4 sm:gap-6 max-w-2xl mx-auto"

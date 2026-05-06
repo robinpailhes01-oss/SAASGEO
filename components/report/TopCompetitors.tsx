@@ -31,6 +31,12 @@ type TopCompetitorsProps = {
   brandName: string;
   yourMentions: number; // mentions sur 120 (= totalQueries * 4)
   totalQueries: number;
+  // Score global (0-100) — sert a nuancer le sous-titre quand la
+  // marque est rank 1 sur le podium local mais avec un score faible
+  // (ex: dominee localement mais invisible sur les plateformes a fort
+  // volume). Cf. brief change "Expliquer l'incoherence score vs
+  // classement".
+  globalScore: number;
   // Localisation pour sous-titre contextualise
   cityMain?: string | null;
   // Plateformes/concurrents qui depassent la marque sur city_main —
@@ -135,6 +141,7 @@ export function TopCompetitors({
   brandName,
   yourMentions,
   totalQueries,
+  globalScore,
   cityMain,
   cityMainPlatformsAboveBrand = [],
 }: TopCompetitorsProps) {
@@ -266,15 +273,39 @@ export function TopCompetitors({
         })}
       </ul>
 
-      {/* Sous-titre dynamique selon position du brand */}
+      {/* Sous-titre dynamique selon rank du brand + score global.
+          On distingue 3 cas pour rank 0 (leader local) car la lecture
+          d'un "VOUS dominez" alors que le score Hero affiche 27/100
+          serait incoherente sans mise en contexte. Le score nuance
+          le message :
+          - score < 40 : domination locale + invisibilite globale
+          - score 40-59 : domination locale + visibilite moyenne
+          - score >= 60 : domination locale + visibilite forte */}
       <p className="text-center text-sm text-ankora-text-soft">
         {brandRank === 0 ? (
-          <>
-            Vous dominez le classement. {" "}
-            <span className="text-success font-semibold">
-              Maintenez votre avance.
-            </span>
-          </>
+          globalScore < 40 ? (
+            <>
+              Vous dominez localement, {" "}
+              <span className="text-warning font-semibold">
+                mais restez invisible sur les recherches génériques à
+                fort volume.
+              </span>
+            </>
+          ) : globalScore < 60 ? (
+            <>
+              Vous dominez le classement local.{" "}
+              <span className="text-warning font-semibold">
+                Quelques recherches génériques restent à conquérir.
+              </span>
+            </>
+          ) : (
+            <>
+              Vous dominez le classement{" "}
+              <span className="text-success font-semibold">
+                et votre visibilité globale est forte. Maintenez votre avance.
+              </span>
+            </>
+          )
         ) : brandRank === 1 ? (
           <>
             Vous êtes challenger.{" "}

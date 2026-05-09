@@ -235,13 +235,25 @@ export async function persistAiResponses(args: {
   // Bulk insert avec retour des IDs (incluant pass_index pour pouvoir
   // re-mapper les analyses sur la BONNE ligne — sinon plusieurs passes
   // pour la meme (query, provider) collisionneraient).
+  //
+  // IMPORTANT : on THROW si l'insert echoue plutot que de retourner
+  // silencieusement. Bug observe : avec l'ancienne contrainte
+  // UNIQUE(query_id, provider) en place, le multi-pass faisait echouer
+  // l'insert sur les passes 2/3, persistAiResponses loggait l'erreur
+  // mais retournait sans rien remonter. Le pipeline continuait, le
+  // score etait calcule sur les responses en memoire (correct), puis
+  // finalize marquait l'audit done. Mais 0 ai_responses persistees =
+  // page rapport vide. Failure mode tres mauvais. On throw maintenant
+  // pour que l'audit soit correctement marque failed (markAuditFailed
+  // dans run-audit.ts) si la persistance casse.
   const { data: inserted, error } = await sb
     .from("ai_responses")
     .insert(responseRows)
     .select("id, query_id, provider, pass_index");
   if (error || !inserted) {
-    console.error(`[persist] ai_responses failed : ${error?.message}`);
-    return;
+    throw new Error(
+      `persistAiResponses: bulk insert ai_responses a echoue (${responseRows.length} rows attendues) — ${error?.message ?? "unknown"}`
+    );
   }
 
   // Map (query_id_supabase + provider + pass_index) → response_id.
@@ -282,7 +294,9 @@ export async function persistAiResponses(args: {
       .from("ai_response_analysis")
       .insert(analysisRows);
     if (errAna) {
-      console.error(`[persist] ai_response_analysis failed : ${errAna.message}`);
+      throw new Error(
+        `persistAiResponses: bulk insert ai_response_analysis a echoue (${analysisRows.length} rows attendues) — ${errAna.message}`
+      );
     }
   }
 }

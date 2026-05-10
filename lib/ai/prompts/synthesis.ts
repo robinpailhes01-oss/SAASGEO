@@ -77,6 +77,13 @@ interface SynthesisInput {
     provider: string;     // openai | anthropic | perplexity | gemini
     competitors_cited: string[];
   }>;
+  // Contextes des concurrents : pour chaque top concurrent (3 max),
+  // extraits des reponses IA qui expliquent POURQUOI il est cite
+  // ("Click&Boat est l'une des plus grandes plateformes...", "Bateau
+  // Loc, base a Carnon, propose..."). Le LLM s'en sert pour generer
+  // des recommandations comparatives PRECISES (ex: "Click&Boat gagne
+  // sur le volume — vous, gagnez sur le local : creez X").
+  competitor_contexts?: Record<string, string[]>;
 }
 
 export function buildSynthesisPrompt(input: SynthesisInput): {
@@ -104,6 +111,27 @@ ${input.missed_opportunities
 Ces opportunites manquees sont la matiere premiere des recommandations. CHAQUE recommandation doit faire reference soit a une question precise de cette liste, soit a un concurrent reel detecte.`
       : "";
 
+  // Block "POURQUOI VOS CONCURRENTS APPARAISSENT" — extraits bruts
+  // des reponses IA qui DECRIVENT chaque concurrent. Ce sont les
+  // arguments que les IA utilisent pour les citer ; en miroir,
+  // ils revelent ce que la marque doit construire ou defendre.
+  const competitorContextsBlock =
+    input.competitor_contexts && Object.keys(input.competitor_contexts).length > 0
+      ? `\n\nPOURQUOI CES CONCURRENTS APPARAISSENT (extraits bruts des reponses IA) :
+${Object.entries(input.competitor_contexts)
+  .map(
+    ([name, excerpts]) =>
+      `  • ${name} :\n${excerpts.map((e) => `      "${e}"`).join("\n")}`
+  )
+  .join("\n")}
+
+Ces extraits revelent les ARGUMENTS que les IA utilisent pour citer ces concurrents (volume, anciennete, specialisation, localisation, type de flotte, etc.). UTILISE ces arguments pour formuler des recommandations comparatives :
+  - Si un concurrent gagne sur le volume -> ${input.brand_name} gagne sur le LOCAL/SPECIALISATION
+  - Si un concurrent gagne sur la notoriete -> ${input.brand_name} gagne sur l'EXPERTISE/PROXIMITE
+  - Si un concurrent gagne sur les avis -> action concrete : collecter avis Google
+  - Si un concurrent est cite avec des donnees precises (tarifs, flotte, services) -> ${input.brand_name} doit publier ces memes donnees sur son site`
+      : "";
+
   const locationBlock = locationLabel
     ? `\nLocalisation : ${locationLabel}`
     : "";
@@ -124,15 +152,17 @@ Aucune recommandation ne doit contenir les termes suivants :
 - "+X clients/mois" "Y nouvelles ventes" "Z% de conversion en plus" -> INTERDIT, ce sont des chiffres inventes qui nuisent a la credibilite. Reste qualitatif (delai et niveau d'effort suffisent — l'impact chiffre est calcule automatiquement par Ankora apres la reco, ne le pre-empte pas dans la description).
 - "API" "endpoint" "JSON" "code"      -> reformule sans jargon technique
 
-REGLES STRICTES POUR LES RECOMMANDATIONS :
+REGLES STRICTES POUR LES RECOMMANDATIONS — MODE COMPETITIVE INTEL :
 1. Chaque recommandation est ecrite POUR ${input.brand_name}, en parlant a son dirigeant. Pas "il faut", mais "vous gagnerez", "vous perdez", "creez", "ajoutez".
-2. Au moins 3 recommandations sur 5 doivent NOMINATIVEMENT citer un concurrent reel detecte (parmi top_competitors_observed) OU une question precise manquee (parmi missed_opportunities).
-3. Si applicable, ajoute "Pas besoin de developpeur" ou "Faisable sans technicien" pour rassurer.
-4. Format obligatoire :
-   - title (max 80 chars) = LE CONSTAT factuel : "[Concurrent] apparait a votre place sur '[query]'" ou "Vous n'apparaissez pas sur '[theme]'".
-   - description (max 300 chars) = L'ACTION en francais simple, sans jargon. Pas plus de 2 phrases.
-5. INTERDIT generique : "Ameliorez votre presence", "Optimisez votre referencement", "Travaillez votre marque" -> rejete sans appel.
-6. ACCEPTE personnalise : "Hotel de la Plage capte 'sejour romantique ${locationLabel ?? "votre ville"}' a votre place — creez une page sur votre site qui repond exactement a cette question. Pas besoin de developpeur."
+2. **OBLIGATOIRE** : AU MINIMUM 4 recommandations sur 5 (idealement TOUTES) doivent citer NOMINATIVEMENT un concurrent reel detecte (parmi top_competitors_observed) OU une question precise manquee (parmi missed_opportunities). Les recos generiques sectorielles sont en derniere position et JAMAIS dans le top 3.
+3. **STRUCTURE OBLIGATOIRE de la description** : commence par "Pourquoi : [observation factuelle sur ce que le concurrent fait/a, tiree des extraits POURQUOI CES CONCURRENTS APPARAISSENT si dispo]." puis "Action : [action concrete que ${input.brand_name} doit faire, en imperatif]." Exemple : "Pourquoi : Click&Boat est cite avec sa flotte de 2000+ bateaux et son systeme d'avis verifies. Action : creez sur votre site une page qui liste vos bateaux avec photos + tarifs + 1 avis client par bateau, et collectez 30 avis Google en 60 jours."
+4. Si applicable, ajoute "Pas besoin de developpeur" pour rassurer.
+5. Format des champs :
+   - title (max 80 chars) = LE CONSTAT FACTUEL : "[Concurrent] apparait a votre place sur '[query/theme]'" ou "Vous n'apparaissez pas sur '[theme]'". JAMAIS de titre generique sans nom propre.
+   - description (max 300 chars) = "Pourquoi : ... Action : ..." en francais simple, sans jargon.
+6. **INTERDIT GENERIQUE** : "Ameliorez votre presence", "Optimisez votre referencement", "Travaillez votre marque", "Creez du contenu de qualite" -> rejete sans appel. Une reco sans nom propre de concurrent ni query precise est consideree comme INVALIDE.
+7. **ACCEPTE personnalise** : "Click&Boat capte 'location bateau ${locationLabel ?? "Montpellier"}' a votre place. Pourquoi : il est cite avec sa flotte massive et ses avis verifies. Action : creez une page /location-bateau-${locationLabel ? locationLabel.toLowerCase().split(",")[0].trim() : "votre-ville"} qui liste vos bateaux + tarifs + 1 avis par bateau. Pas besoin de developpeur."
+8. **MIROIR DAVID-GOLIATH** : si un concurrent est plus gros (Click&Boat, SamBoat, Booking…), NE PAS proposer de copier sa strategie. Toujours pivoter vers un avantage actionnable pour une PME : local, specialisation, experience humaine, avis, page dediee a une niche.
 
 Tu reponds UNIQUEMENT avec un JSON valide matchant le schema demande.`,
     prompt: `Synthetise l'audit GEO du business suivant :
@@ -160,7 +190,7 @@ CHECKS TECHNIQUES :
 ${input.failed_tech_checks
   .slice(0, 10)
   .map((c) => `  - ${c.label}${c.recommendation ? ` → ${c.recommendation.slice(0, 100)}` : ""}`)
-  .join("\n")}${missedBlock}
+  .join("\n")}${missedBlock}${competitorContextsBlock}
 
 Format de reponse JSON :
 
@@ -178,6 +208,6 @@ Format de reponse JSON :
   ]
 }
 
-Genere entre 5 et 15 recommandations. Quick wins en premier (impact eleve / effort faible). Au moins 3 recommandations DOIVENT etre personnalisees (citent un concurrent ou une query manquee). Aucune ne doit contenir le jargon liste plus haut. Reponds UNIQUEMENT avec le JSON.`,
+Genere entre 5 et 15 recommandations. Quick wins en premier (impact eleve / effort faible). **AU MINIMUM 4 recommandations sur 5 (idealement TOUTES)** DOIVENT etre personnalisees (citer un concurrent reel par son nom propre ET/OU une query manquee precise) ET suivre la structure "Pourquoi : ... Action : ..." dans la description. Les recos generiques sectorielles sont en queue de liste, jamais dans le top 3. Aucune ne doit contenir le jargon liste plus haut. Reponds UNIQUEMENT avec le JSON.`,
   };
 }

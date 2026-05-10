@@ -728,6 +728,60 @@ export async function stepSynthesis(args: {
       competitors_cited: r.analysis!.competitors_cited.slice(0, 3),
     }));
 
+  // Construction du contexte CONCURRENTIEL : pour chaque top concurrent,
+  // on extrait des passages des reponses IA qui expliquent POURQUOI il
+  // est cite. Les IA decrivent souvent les concurrents ("Click&Boat est
+  // une plateforme avec 2000+ bateaux", "Bateau Loc, base a Carnon,
+  // propose..."). Ces passages = matiere premiere d'or pour generer
+  // des recommandations comparatives ("vous ne pouvez pas concurrencer
+  // sur le volume mais sur le local — creez X").
+  //
+  // Strategie : pour chaque top 3 concurrent, on garde jusqu'a 3
+  // extraits (~180 chars chacun) contenant le nom du concurrent.
+  // Tronque proprement sur les espaces.
+  const top3CompNames = args.visibility_scores.top_competitors
+    .slice(0, 3)
+    .map((c) => c.name);
+  const competitorContexts: Record<string, string[]> = {};
+  for (const cName of top3CompNames) {
+    const lower = cName.toLowerCase();
+    const excerpts: string[] = [];
+    const seenExcerptsKey = new Set<string>();
+    for (const r of args.responses ?? []) {
+      if (excerpts.length >= 3) break;
+      const text = r.response_text ?? "";
+      if (!text) continue;
+      const idx = text.toLowerCase().indexOf(lower);
+      if (idx < 0) continue;
+      // Fenetre ~180 chars autour de la mention, tronquee sur espace
+      const start = Math.max(0, idx - 60);
+      const end = Math.min(text.length, idx + lower.length + 120);
+      let excerpt = text.slice(start, end).trim();
+      if (start > 0) {
+        const firstSpace = excerpt.indexOf(" ");
+        if (firstSpace > 0 && firstSpace < 20) {
+          excerpt = excerpt.slice(firstSpace + 1);
+        }
+        excerpt = "…" + excerpt;
+      }
+      if (end < text.length) {
+        const lastSpace = excerpt.lastIndexOf(" ");
+        if (lastSpace > excerpt.length - 20) {
+          excerpt = excerpt.slice(0, lastSpace);
+        }
+        excerpt = excerpt + "…";
+      }
+      // Dedup : on garde un seul extrait par debut commun
+      const key = excerpt.slice(0, 40).toLowerCase();
+      if (seenExcerptsKey.has(key)) continue;
+      seenExcerptsKey.add(key);
+      excerpts.push(excerpt);
+    }
+    if (excerpts.length > 0) {
+      competitorContexts[cName] = excerpts;
+    }
+  }
+
   const { system, prompt } = buildSynthesisPrompt({
     brand_name: args.business.brand_name,
     industry: args.business.industry,
@@ -745,6 +799,7 @@ export async function stepSynthesis(args: {
     passed_tech_checks_count: passedChecks,
     total_tech_checks: totalChecks,
     missed_opportunities: missedOpportunities,
+    competitor_contexts: competitorContexts,
   });
 
   const model = TASK_MODELS.synthesis;
